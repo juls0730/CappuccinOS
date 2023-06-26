@@ -13,7 +13,7 @@ build-os-image:
 		dd if=bin/kernel.bin conv=notrunc of=bin/${IMAGE_NAME} bs=512 seek=1
 
 compile-bootloader:
-		nasm -f bin bootloader/bootloader.asm -o bin/bootloader.bin
+		nasm -f bin src/bootloader/bootloader.asm -o bin/bootloader.bin
 
 objcopy-elf-file:
 		objcopy -O binary target/x86_64-unknown-none/release/operating-system.elf bin/kernel.bin
