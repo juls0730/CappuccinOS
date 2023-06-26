@@ -1,26 +1,29 @@
-.PHONY: all clean
+IMAGE_NAME = os-image
 
-all: cargo-build compile-bootloader copy-bootloader objcopy-elf-file build-os-image
+.PHONY: build clean
+
+build: make-bin-dir compile-kernel compile-bootloader objcopy-elf-file build-os-image
+
+make-bin-dir:
+		mkdir -p bin
 
 build-os-image:
-		dd if=target/x86_64-unknown-none/release/bootloader.bin conv=notrunc of=os-image bs=512
-		dd if=target/x86_64-unknown-none/release/operating-system.bin conv=notrunc of=os-image bs=512 seek=1
+		rm bin/${IMAGE_NAME}
+		dd if=bin/bootloader.bin conv=notrunc of=bin/${IMAGE_NAME} bs=512
+		dd if=bin/kernel.bin conv=notrunc of=bin/${IMAGE_NAME} bs=512 seek=1
 
 compile-bootloader:
-		nasm -f bin bootloader/bootloader.asm -o bootloader/bootloader.bin
+		nasm -f bin bootloader/bootloader.asm -o bin/bootloader.bin
 
 objcopy-elf-file:
-		objcopy -O binary target/x86_64-unknown-none/release/operating-system.elf target/x86_64-unknown-none/release/operating-system.bin
+		objcopy -O binary target/x86_64-unknown-none/release/operating-system.elf bin/kernel.bin
 
-copy-bootloader:
-		cp bootloader/bootloader.bin target/x86_64-unknown-none/release/bootloader.bin
+compile-kernel:
+		cargo build --release --target x86_64-unknown-none.json
 
-cargo-build:
-		cargo rustc --release --target x86_64-unknown-none.json
-
-run: all
-		qemu-system-x86_64 -drive format=raw,file=os-image -serial mon:stdio -s
+run: build
+		qemu-system-x86_64 -drive format=raw,file=bin/${IMAGE_NAME} -serial mon:stdio -s
 
 clean:
 		cargo clean
-		rm -f os-image bootloader/bootloader.bin
+		rm -rf bin
