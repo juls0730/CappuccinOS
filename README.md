@@ -3,6 +3,7 @@ Toto OS is a small operating system written in rust. This README will guide you 
 
 ## Prerequisites
 Before building Toto OS, make sure you have th following installed on your machine:
+
 - rust (nightly)
 - cargo
 
@@ -26,6 +27,7 @@ You will be able to find the built image in `bin/os-image`.
 <br/>
 
 If you instead want to build Toto OS & run it with qemu, you can simply run make like so:
+
 ```BASH
 make run
 ```
