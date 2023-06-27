@@ -2,7 +2,7 @@
 Toto OS is a small operating system written in rust. This README will guide you through the process of building and running Toto OS.
 
 ## Prerequisites
-Before building Toto OS, make sure you have th following installed on your machine:
+Before building Toto OS, make sure you have the following installed on your machine:
 
 - rust (nightly)
 - cargo

@@ -12,8 +12,8 @@ mov ah, 0x00
 mov al, 0x12
 int 0x10
 
-call load_kernel
-call switch_to_32bit
+call load_kernel					; Load entire kernel into memory
+call switch_to_32bit			; switch to 32 bit mode and enable A20
 
 load_kernel:
 		mov bx, 0x1000        ; Destination address
@@ -58,6 +58,11 @@ switch_to_32bit:
 		; Disable interrupts and setup gdt 
 		cli
 		lgdt [gdtp]
+
+		; Enable A20 with Fast A20 Gate
+		in al, 0x92
+		or al, 2
+		out 0x92, al
 
 		; Set PE (Protection Enable) bit in CR0
 		mov eax, cr0
