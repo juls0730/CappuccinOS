@@ -7,17 +7,33 @@ mov [BOOT_DEVICE], dl
 mov bp, 0x9000
 mov sp, bp
 
-; Set video mode (640 x 480 @ 16 colors)
-mov ah, 0x00
-mov al, 0x12
-int 0x10
+; Check if Vesa mode is available
+mov  ax, 0x4F01
+mov  cx, 0x0118
+mov  bx, 0x0800
+mov  es, bx
+mov  di, 0x00
+int  0x10
+mov  al, [es:di]
+test al, al
+jns  NoLFB
+pop es
+
+; Enable Vesa mode
+mov  ax, 0x4F02      ; What VBA service is wanted?
+mov  bx, 0x0118
+int  0x10
 
 call load_kernel					; Load entire kernel into memory
 call switch_to_32bit			; switch to 32 bit mode and enable A20
 
+NoLFB:
+		; uh oh
+		hlt
+
 load_kernel:
 		mov bx, 0x1000        ; Destination address
-		mov dh, 2             ; Sector number
+		mov dh, 16            ;                                     <-- IF THERE'S PROBLEMS IT'S PROBABLY HERE!!
 		mov dl, [BOOT_DEVICE] ; Drive Number
 
 		mov al, dh

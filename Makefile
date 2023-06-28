@@ -1,6 +1,6 @@
 IMAGE_NAME = os-image
 
-.PHONY: build clean
+.PHONY: clean
 
 build: make-bin-dir compile-kernel compile-bootloader objcopy-elf-file build-os-image
 
@@ -8,7 +8,6 @@ make-bin-dir:
 		mkdir -p bin
 
 build-os-image:
-		rm bin/${IMAGE_NAME}
 		dd if=bin/bootloader.bin conv=notrunc of=bin/${IMAGE_NAME} bs=512
 		dd if=bin/kernel.bin conv=notrunc of=bin/${IMAGE_NAME} bs=512 seek=1
 
