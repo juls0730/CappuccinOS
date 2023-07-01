@@ -20,6 +20,6 @@ impl Random {
 	pub fn rand(&mut self) -> i64 {
 			let r = self.a * self.previous + self.c;
 			self.previous = r;
-			r
+			return r;
 	}
 }

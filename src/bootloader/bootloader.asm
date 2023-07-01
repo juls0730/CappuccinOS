@@ -3,7 +3,7 @@
 
 mov [BOOT_DEVICE], dl
 
-; setup stack
+; Setup stack pointers
 mov bp, 0x9000
 mov sp, bp
 
@@ -33,7 +33,7 @@ NoLFB:
 
 load_kernel:
 		mov bx, 0x1000        ; Destination address
-		mov dh, 16            ;                                     <-- IF THERE'S PROBLEMS IT'S PROBABLY HERE!!
+		mov dh, 64            ;                                     <-- IF THERE'S PROBLEMS IT'S PROBABLY HERE!!
 		mov dl, [BOOT_DEVICE] ; Drive Number
 
 		mov al, dh
@@ -44,6 +44,10 @@ load_kernel:
 
 		int 0x13
 		ret
+
+idtp:
+	dw 0
+	dd 0
 
 gdtp:
 		dw gdt_end - gdt_start - 1
@@ -71,7 +75,7 @@ GDT_CODE_SEG_ADDR equ gdt_code_segment - gdt_start
 GDT_DATA_SEG_ADDR equ gdt_data_segment - gdt_start
 
 switch_to_32bit:
-		; Disable interrupts and setup gdt 
+		; Disable interrupts, and load GDT with a null IDT 
 		cli
 		lgdt [gdtp]
 
@@ -89,12 +93,14 @@ switch_to_32bit:
 [BITS 32]
 init_32bit:
 		mov ax, GDT_DATA_SEG_ADDR
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    mov ss, ax
+		mov eax, 0x10
+    mov ds, eax
+    mov es, eax
+    mov fs, eax
+    mov gs, eax
+    mov ss, eax
 
+		mov esp, 0x9000
 		mov ebp, 0x90000
 		mov esp, ebp
 

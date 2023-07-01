@@ -1,3 +1,4 @@
+#![feature(ascii_char)]
 #![no_std]
 #![no_main]
 
@@ -17,13 +18,26 @@ pub extern "C" fn _start() -> ! {
 		serial::write_serial(byte);
 	}
 
-	let mut rand = libs::rand::Random::new();
-	rand.rseed(1234);
+	// let mut rand = libs::rand::Random::new();
+	// rand.rseed(1234);
 
 	video::init_video();
 
+	video::write_string("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+
+	let mut col = 0;
+	let mut row = 1;
+	for character in 0..255 {
+		if col == 160 {
+			row += 1;
+			col = 0;
+		}
+		video::put_char(character, col, row, 0xFFFFFF, 0x000000);
+		col += 1;
+	}
+	
 	loop {
-		video::fill_screen(rand.rand() as u32)
+		// video::fill_screen(rand.rand() as u32)
 	}
 }
 
