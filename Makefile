@@ -1,35 +1,45 @@
 IMAGE_NAME = toto-os.iso
+ARCH := ${TARGET}
 
-.PHONY: clean run build
+ifeq (${ARCH},) 
+	ARCH := x86_64
+endif
 
-build: make-bin-dir compile-kernel copy-files build-os-image
+.PHONY: clean run build build-32
 
-make-bin-dir:
+build: prepare-bin-files prepare-iso compile-bootloader compile-kernel build-iso
+
+prepare-bin-files:
 		mkdir -p bin
+		rm -f bin/${IMAGE_NAME}
+		dd if=/dev/zero bs=1M count=0 seek=64 of=bin/${IMAGE_NAME}
 		mkdir -p bin/iso_root
 
-copy-files:
-		cp -v target/x86_64-unknown-none/release/toto-os.elf limine.cfg limine/limine-bios.sys \
-      limine/limine-bios-cd.bin limine/limine-uefi-cd.bin bin/iso_root/
-		mkdir -p bin/iso_root/EFI/BOOT
-		cp -v limine/BOOT*.EFI bin/iso_root/EFI/BOOT/
+prepare-iso:
+		parted -s bin/${IMAGE_NAME} mklabel gpt
+		parted -s bin/${IMAGE_NAME} mkpart ESP fat32 2048s 100%
+		parted -s bin/${IMAGE_NAME} set 1 esp on
 
-build-os-image:
-		xorriso -as mkisofs -b limine-bios-cd.bin \
-        -no-emul-boot -boot-load-size 4 -boot-info-table \
-        --efi-boot limine-uefi-cd.bin \
-        -efi-boot-part --efi-boot-image --protective-msdos-label \
-        bin/iso_root -o bin/${IMAGE_NAME}
-		./limine/limine bios-install bin/${IMAGE_NAME}
+build-iso:
+		USED_LOOPBACK=$$(sudo losetup -Pf --show bin/${IMAGE_NAME}) && \
+		sudo mkfs.fat -F 32 $${USED_LOOPBACK}p1 && \
+		sudo mount $${USED_LOOPBACK}p1 bin/iso_root && \
+		sudo mkdir -p bin/iso_root/EFI/BOOT && \
+		sudo cp -v target/${ARCH}-unknown-none/release/toto-os.elf limine.cfg ./limine/limine-bios.sys bin/iso_root/ && \
+		sudo cp -v limine/BOOT*.EFI bin/iso_root/EFI/BOOT/ && \
+		sync && \
+		sudo umount bin/iso_root && \
+		sudo losetup -d $${USED_LOOPBACK}
 
 compile-bootloader:
-		nasm -f bin src/bootloader/bootloader.asm -o bin/bootloader.bin
+		make -C limine
+		./limine/limine bios-install bin/${IMAGE_NAME}
 
 compile-kernel:
-		cargo rustc --release --target x86_64-unknown-none.json -- -C link-arg=--script=./linker.ld
+		cargo build --release --target=./src/arch/${ARCH}/${ARCH}-unknown-none.json
 
 run: build
-		qemu-system-x86_64 -cdrom bin/${IMAGE_NAME} -serial mon:stdio -s
+		qemu-system-x86_64 -drive format=raw,file=bin/${IMAGE_NAME} -serial mon:stdio -s
 
 clean:
 		cargo clean

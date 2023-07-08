@@ -6,13 +6,15 @@
 	"target-pointer-width": "64",
 	"target-c-int-width": "32",
 	"features": "-mmx,-sse,+soft-float",
-	"os": "tifflin",
+	"os": "toto-os",
 	"arch": "x86_64",
 	"linker-flavor": "ld",
-	"pre-link-args": { "ld": ["-melf_x86_64"] },
+	"pre-link-args": { 
+		"ld": [
+			"-melf_x86_64",
+			"--script=./src/arch/x86_64/linker.ld"
+		] 
+	},
 	"exe-suffix": ".elf",
-	"no-compiler-rt": true,
-	"disable-redzone": true,
-	"eliminate-frame-pointer": false,
-	"morestack": false
+	"disable-redzone": true
 }

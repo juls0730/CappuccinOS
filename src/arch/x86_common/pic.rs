@@ -55,7 +55,7 @@ pub struct ChainedPics {
 
 impl ChainedPics {
 	// Create a new interface for the chained pic controllers.
-	pub const unsafe fn new(offset1: u8, offset2: u8) -> ChainedPics {
+	pub const fn new(offset1: u8, offset2: u8) -> ChainedPics {
 		ChainedPics { 
 			pics: [
 				Pic {
@@ -78,9 +78,6 @@ impl ChainedPics {
 		// machine. writing to port 0x80 should take care of this.
 		let mut wait_port: u8 = 0x80;
 		let mut wait = || outb(wait_port as u16, 0);
-
-		// Save our original interrupt masks.
-		let saved_masks = self.read_masks();
 
 		// Tell each PIC we're going to initialize it.
 		outb(self.pics[0].command as u16, CMD_INIT);
@@ -106,8 +103,7 @@ impl ChainedPics {
 		outb(self.pics[1].data as u16, MODE_8086);
 		wait();
 
-		// Restore our saved masks.
-		self.write_masks(saved_masks[0], saved_masks[1]);
+		crate::libs::logging::log_ok("PICs initialized\n");
 	}
 
 	pub fn read_masks(&mut self) -> [u8; 2] {

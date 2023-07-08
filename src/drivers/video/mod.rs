@@ -1,5 +1,6 @@
+mod font;
+
 use limine::LimineFramebufferRequest;
-use core::ascii;
 
 static FRAMEBUFFER_REQUEST: LimineFramebufferRequest = LimineFramebufferRequest::new(0);
 
@@ -8,6 +9,8 @@ pub fn init_video() {
 	put_char(32, 1, 0, 0xFFFFFF, 0x000000);
 }
 
+// This is slow, but significantly faster than filling the framebuffer pixel-by-pixel with for loops.
+// idk, fix it later ig.
 pub fn fill_screen(color: u32) {
 	if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response().get() {
 		if framebuffer_response.framebuffer_count < 1 {
@@ -15,25 +18,18 @@ pub fn fill_screen(color: u32) {
 		}
 
 		let framebuffer = &framebuffer_response.framebuffers()[0];
-		
-		for x in 0..framebuffer.width {
-			for y in 0..framebuffer.height {
-				put_pixel(x as u32, y as u32, color);
-			}
-		}
-	}
-}
+		let buffer_size = (framebuffer.pitch * framebuffer.width) as usize;
 
-pub fn write_string(string: &str) {
-	let mut column = 0;
-	for (i, character) in string.encode_utf16().enumerate() {
-		put_char(character as u8, column, 0, 0xFFFFFF, 0x000000);
-		column += 1;
+		let buffer = unsafe {
+			core::slice::from_raw_parts_mut(framebuffer.address.as_ptr().unwrap() as *mut u32, buffer_size)
+		};
+
+		buffer.fill(color);
 	}
 }
 
 pub fn put_char(character: u8, cx: u16, cy: u16, fg: u32, bg: u32) {
-	let font = crate::libs::font::G_8X16_FONT;
+	let font = font::G_8X16_FONT;
 
 	let character_array = font[character as usize];
 
@@ -51,6 +47,47 @@ pub fn put_char(character: u8, cx: u16, cy: u16, fg: u32, bg: u32) {
 				put_pixel(x, y, bg);
 			}
 		}
+	}
+}
+
+struct Cursor {
+	cx: u16,
+	cy: u16,
+	fg: u32,
+}
+
+static mut CURSOR: Cursor = Cursor{ 
+	cx: 0, 
+	cy: 0,
+	fg: 0xbababa
+};
+
+pub fn puts(string: &str) {
+	if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response().get() {
+		let framebuffer = &framebuffer_response.framebuffers()[0];
+
+		for (_i, character) in string.chars().enumerate() {
+			unsafe {
+				if CURSOR.cx == (framebuffer.width / 8) as u16 {
+					CURSOR.cy += 1;
+					CURSOR.cx = 0;
+				}
+				// Newline character
+				if character as u8 == 10 {
+					CURSOR.cx = 0;
+					CURSOR.cy += 1;
+				} else {
+					put_char(character as u8, CURSOR.cx, CURSOR.cy, CURSOR.fg, 0x000000);
+					CURSOR.cx += 1;
+				}
+			}
+		}
+	}
+}
+
+pub fn set_color(color: u32) {
+	unsafe {
+		CURSOR.fg = color;
 	}
 }
 
