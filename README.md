@@ -32,7 +32,7 @@ Before building Toto OS, make sure you have the following installed on your mach
 
 Clone the repo:
 ```BASH
-git clone https://github.com/juls0730/toto-os.git
+git clone --recurse-submodules https://github.com/juls0730/toto-os.git
 cd toto-os
 ```
 
