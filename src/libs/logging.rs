@@ -1,4 +1,4 @@
-use crate::drivers::video::{puts, set_color};
+use crate::usr::tty::{puts, set_color};
 
 pub fn log_info(msg: &str) {
 	log_indicator(0xcacaca);

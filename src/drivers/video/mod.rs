@@ -2,7 +2,7 @@ mod font;
 
 use limine::LimineFramebufferRequest;
 
-static FRAMEBUFFER_REQUEST: LimineFramebufferRequest = LimineFramebufferRequest::new(0);
+pub static FRAMEBUFFER_REQUEST: LimineFramebufferRequest = LimineFramebufferRequest::new(0);
 
 pub fn init_video() {
 	put_char(62, 0, 0, 0xFFFFFF, 0x000000);
@@ -47,47 +47,6 @@ pub fn put_char(character: u8, cx: u16, cy: u16, fg: u32, bg: u32) {
 				put_pixel(x, y, bg);
 			}
 		}
-	}
-}
-
-struct Cursor {
-	cx: u16,
-	cy: u16,
-	fg: u32,
-}
-
-static mut CURSOR: Cursor = Cursor{ 
-	cx: 0, 
-	cy: 0,
-	fg: 0xbababa
-};
-
-pub fn puts(string: &str) {
-	if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response().get() {
-		let framebuffer = &framebuffer_response.framebuffers()[0];
-
-		for (_i, character) in string.chars().enumerate() {
-			unsafe {
-				if CURSOR.cx == (framebuffer.width / 8) as u16 {
-					CURSOR.cy += 1;
-					CURSOR.cx = 0;
-				}
-				// Newline character
-				if character as u8 == 10 {
-					CURSOR.cx = 0;
-					CURSOR.cy += 1;
-				} else {
-					put_char(character as u8, CURSOR.cx, CURSOR.cy, CURSOR.fg, 0x000000);
-					CURSOR.cx += 1;
-				}
-			}
-		}
-	}
-}
-
-pub fn set_color(color: u32) {
-	unsafe {
-		CURSOR.fg = color;
 	}
 }
 

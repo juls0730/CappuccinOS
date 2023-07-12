@@ -1,4 +1,4 @@
-use super::common::pic::ChainedPics;
+use crate::arch::x86_common::pic::ChainedPics;
 
 #[derive(Copy, Clone)]
 #[repr(C, packed)]

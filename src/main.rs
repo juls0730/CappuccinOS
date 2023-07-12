@@ -4,9 +4,8 @@
 
 mod drivers;
 mod libs;
+mod usr;
 
-#[cfg(target_arch = "x86_64")]
-#[path = "arch/x86_64/mod.rs"]
 pub mod arch;
 
 use drivers::{serial, video};
@@ -27,7 +26,7 @@ pub extern "C" fn _start() -> ! {
 		arch::interrupts::PICS.initialize();
 	}
 
-	drivers::keyboard::init_keyboard();
+	usr::shell::init_shell();
 
 	loop {
 		// Interrupts still work, and this will prevent 100% CPU usage on one core.
