@@ -4,11 +4,11 @@ Toto OS is a small x86-64 operating system written from scratch in rust. This RE
 ## Features
 - [X] Serial output
 - [X] Hardware interrupts
+- [X] PS/2 Keyboard support
 - [ ] Use APIC instead of PIC
 - [ ] Roll my own bootloader
 	- [ ] x86 CPU support
 	- [ ] armv8 CPU support
-- [ ] PS/2 Keyboard support
 - [ ] ANSI color codes in console
 - [ ] File system
 - [ ] Basic shell
