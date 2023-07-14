@@ -2,15 +2,18 @@
 #![no_std]
 #![no_main]
 
-// extern crate alloc;
+extern crate alloc;
 
+mod api;
 mod drivers;
 mod libs;
 mod usr;
 
 pub mod arch;
 
-use drivers::{serial, video};
+use alloc::{format, vec::Vec};
+use drivers::{fs::FileSystemDriver, serial, video};
+use usr::tty::puts;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
@@ -26,6 +29,22 @@ pub extern "C" fn _start() -> ! {
 
     unsafe {
         arch::interrupts::PICS.initialize();
+    }
+
+    let mut fs_driver = FileSystemDriver {
+        metadata: Vec::new(),
+        directory_entries: Vec::new(),
+    };
+
+    let file_data = fs_driver.read_file("example.txt");
+
+    match file_data {
+        Some(data) => {
+            puts(&format!("{}", core::str::from_utf8(data).unwrap()));
+        }
+        None => {
+            puts("Error reading file");
+        }
     }
 
     usr::shell::init_shell();

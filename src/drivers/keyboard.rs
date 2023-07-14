@@ -18,7 +18,7 @@ pub struct Key<'a> {
     pub mod_key: bool,
     pub printable: bool,
     pub pressed: bool,
-    pub key: &'a str,
+    pub name: &'a str,
 }
 
 static mut EXTENDED_KEY: bool = false;
@@ -79,210 +79,210 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "Esc",
+                name: "Esc",
             });
         }
         0x02 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "1",
+                    name: "1",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "!",
+                    name: "!",
                 });
             }
         }
         0x03 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "2",
+                    name: "2",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "@",
+                    name: "@",
                 });
             }
         }
         0x04 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "3",
+                    name: "3",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "#",
+                    name: "#",
                 });
             }
         }
         0x05 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "4",
+                    name: "4",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "$",
+                    name: "$",
                 });
             }
         }
         0x06 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "5",
+                    name: "5",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "%",
+                    name: "%",
                 });
             }
         }
         0x07 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "6",
+                    name: "6",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "^",
+                    name: "^",
                 });
             }
         }
         0x08 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "7",
+                    name: "7",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "&",
+                    name: "&",
                 });
             }
         }
         0x09 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "8",
+                    name: "8",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "*",
+                    name: "*",
                 });
             }
         }
         0x0A => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "9",
+                    name: "9",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "(",
+                    name: "(",
                 });
             }
         }
         0x0B => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "0",
+                    name: "0",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: ")",
+                    name: ")",
                 });
             }
         }
         0x0C => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "-",
+                    name: "-",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "_",
+                    name: "_",
                 });
             }
         }
         0x0D => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "=",
+                    name: "=",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "+",
+                    name: "+",
                 });
             }
         }
@@ -291,7 +291,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "Backspace",
+                name: "Backspace",
             });
         }
         0x0F => {
@@ -302,7 +302,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "Tab",
+                name: "Tab",
             });
         }
         0x10 => {
@@ -311,14 +311,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "a",
+                    name: "a",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "A",
+                    name: "A",
                 });
             }
         }
@@ -328,14 +328,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "w",
+                    name: "w",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "W",
+                    name: "W",
                 });
             }
         }
@@ -345,14 +345,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "e",
+                    name: "e",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "E",
+                    name: "E",
                 });
             }
         }
@@ -362,14 +362,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "r",
+                    name: "r",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "R",
+                    name: "R",
                 });
             }
         }
@@ -379,14 +379,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "t",
+                    name: "t",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "T",
+                    name: "T",
                 });
             }
         }
@@ -396,14 +396,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "y",
+                    name: "y",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "Y",
+                    name: "Y",
                 });
             }
         }
@@ -413,14 +413,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "u",
+                    name: "u",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "U",
+                    name: "U",
                 });
             }
         }
@@ -430,14 +430,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "i",
+                    name: "i",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "I",
+                    name: "I",
                 });
             }
         }
@@ -447,14 +447,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "o",
+                    name: "o",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "O",
+                    name: "O",
                 });
             }
         }
@@ -464,14 +464,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "p",
+                    name: "p",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "P",
+                    name: "P",
                 });
             }
         }
@@ -481,14 +481,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "[",
+                    name: "[",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "{",
+                    name: "{",
                 });
             }
         }
@@ -498,14 +498,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "]",
+                    name: "]",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "}",
+                    name: "}",
                 });
             }
         }
@@ -514,7 +514,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "Enter",
+                name: "Enter",
             });
         }
         0x1D => {
@@ -527,7 +527,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "RCtrl",
+                    name: "RCtrl",
                 });
             }
 
@@ -535,7 +535,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "LCtrl",
+                name: "LCtrl",
             });
         }
         0x1E => {
@@ -544,14 +544,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "a",
+                    name: "a",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "A",
+                    name: "A",
                 });
             }
         }
@@ -561,14 +561,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "s",
+                    name: "s",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "S",
+                    name: "S",
                 });
             }
         }
@@ -578,14 +578,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "d",
+                    name: "d",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "D",
+                    name: "D",
                 });
             }
         }
@@ -595,14 +595,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "f",
+                    name: "f",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "F",
+                    name: "F",
                 });
             }
         }
@@ -612,14 +612,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "g",
+                    name: "g",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "G",
+                    name: "G",
                 });
             }
         }
@@ -629,14 +629,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "h",
+                    name: "h",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "H",
+                    name: "H",
                 });
             }
         }
@@ -646,14 +646,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "j",
+                    name: "j",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "J",
+                    name: "J",
                 });
             }
         }
@@ -663,14 +663,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "k",
+                    name: "k",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "K",
+                    name: "K",
                 });
             }
         }
@@ -680,65 +680,65 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "l",
+                    name: "l",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "L",
+                    name: "L",
                 });
             }
         }
         0x27 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: ";",
+                    name: ";",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: ":",
+                    name: ":",
                 });
             }
         }
         0x28 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "'",
+                    name: "'",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "\"",
+                    name: "\"",
                 });
             }
         }
         0x29 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "`",
+                    name: "`",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "~",
+                    name: "~",
                 });
             }
         }
@@ -750,7 +750,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "LShift",
+                name: "LShift",
             });
         }
         0x2B => {
@@ -759,14 +759,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "\\",
+                    name: "\\",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "|",
+                    name: "|",
                 });
             }
         }
@@ -776,14 +776,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "z",
+                    name: "z",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "Z",
+                    name: "Z",
                 });
             }
         }
@@ -793,14 +793,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "x",
+                    name: "x",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "X",
+                    name: "X",
                 });
             }
         }
@@ -810,14 +810,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "c",
+                    name: "c",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "C",
+                    name: "C",
                 });
             }
         }
@@ -827,14 +827,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "v",
+                    name: "v",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "V",
+                    name: "V",
                 });
             }
         }
@@ -844,14 +844,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "b",
+                    name: "b",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "B",
+                    name: "B",
                 });
             }
         }
@@ -861,14 +861,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "n",
+                    name: "n",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "N",
+                    name: "N",
                 });
             }
         }
@@ -878,65 +878,65 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "m",
+                    name: "m",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "M",
+                    name: "M",
                 });
             }
         }
         0x33 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: ",",
+                    name: ",",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "<",
+                    name: "<",
                 });
             }
         }
         0x34 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: ".",
+                    name: ".",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: ">",
+                    name: ">",
                 });
             }
         }
         0x35 => {
-            if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
+            if unsafe { MOD_STATUSES.shift } == false {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "/",
+                    name: "/",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "?",
+                    name: "?",
                 });
             }
         }
@@ -948,7 +948,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "RShift",
+                name: "RShift",
             });
         }
         0x37 => {
@@ -956,7 +956,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: true,
                 pressed: true,
-                key: "*",
+                name: "*",
             });
         }
         0x38 => {
@@ -967,7 +967,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "Alt",
+                name: "Alt",
             });
         }
         0x39 => {
@@ -975,7 +975,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: true,
                 pressed: true,
-                key: " ",
+                name: " ",
             });
         }
         0x3A => {
@@ -986,7 +986,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "CapsLock",
+                name: "CapsLock",
             });
         }
         0x3B => {
@@ -994,7 +994,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F1",
+                name: "F1",
             });
         }
         0x3C => {
@@ -1002,7 +1002,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F2",
+                name: "F2",
             });
         }
         0x3D => {
@@ -1010,7 +1010,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F3",
+                name: "F3",
             });
         }
         0x3E => {
@@ -1018,7 +1018,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F4",
+                name: "F4",
             });
         }
         0x3F => {
@@ -1026,7 +1026,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F5",
+                name: "F5",
             });
         }
         0x40 => {
@@ -1034,7 +1034,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F6",
+                name: "F6",
             });
         }
         0x41 => {
@@ -1042,7 +1042,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F7",
+                name: "F7",
             });
         }
         0x42 => {
@@ -1050,7 +1050,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F8",
+                name: "F8",
             });
         }
         0x43 => {
@@ -1058,7 +1058,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F9",
+                name: "F9",
             });
         }
         0x44 => {
@@ -1066,7 +1066,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F10",
+                name: "F10",
             });
         }
         0x45 => {
@@ -1078,7 +1078,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "NumLock",
+                name: "NumLock",
             });
         }
         0x46 => {
@@ -1090,7 +1090,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: true,
-                key: "ScrLock",
+                name: "ScrLock",
             });
         }
         0x47 => {
@@ -1099,14 +1099,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "Home",
+                    name: "Home",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "7",
+                    name: "7",
                 });
             }
         }
@@ -1116,7 +1116,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "CurUp",
+                    name: "CurUp",
                 });
             }
 
@@ -1125,14 +1125,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "CurUp",
+                    name: "CurUp",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "8",
+                    name: "8",
                 });
             }
         }
@@ -1142,7 +1142,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "PgUp",
+                    name: "PgUp",
                 });
             }
 
@@ -1151,14 +1151,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "PgUp",
+                    name: "PgUp",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "9",
+                    name: "9",
                 });
             }
         }
@@ -1167,7 +1167,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: true,
                 pressed: true,
-                key: "-",
+                name: "-",
             });
         }
         0x4B => {
@@ -1176,7 +1176,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "CurLeft",
+                    name: "CurLeft",
                 });
             }
 
@@ -1185,14 +1185,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "CurLeft",
+                    name: "CurLeft",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "4",
+                    name: "4",
                 });
             }
         }
@@ -1204,7 +1204,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "5",
+                    name: "5",
                 });
             }
         }
@@ -1214,7 +1214,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "CurRight",
+                    name: "CurRight",
                 });
             }
 
@@ -1223,14 +1223,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "CurRight",
+                    name: "CurRight",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "6",
+                    name: "6",
                 });
             }
         }
@@ -1239,7 +1239,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: true,
                 pressed: true,
-                key: "+",
+                name: "+",
             });
         }
         0x4F => {
@@ -1248,7 +1248,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "End",
+                    name: "End",
                 });
             }
 
@@ -1257,14 +1257,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "End",
+                    name: "End",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "1",
+                    name: "1",
                 });
             }
         }
@@ -1274,7 +1274,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "CurDown",
+                    name: "CurDown",
                 });
             }
 
@@ -1283,14 +1283,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "CurDown",
+                    name: "CurDown",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "2",
+                    name: "2",
                 });
             }
         }
@@ -1300,7 +1300,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "PgDn",
+                    name: "PgDn",
                 });
             }
 
@@ -1309,14 +1309,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "PgDn",
+                    name: "PgDn",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "3",
+                    name: "3",
                 });
             }
         }
@@ -1326,7 +1326,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "Insert",
+                    name: "Insert",
                 });
             }
 
@@ -1335,14 +1335,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "Insert",
+                    name: "Insert",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "0",
+                    name: "0",
                 });
             }
         }
@@ -1352,7 +1352,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "Del",
+                    name: "Del",
                 });
             }
 
@@ -1361,14 +1361,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: false,
                     pressed: true,
-                    key: "Del",
+                    name: "Del",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    key: "0",
+                    name: "0",
                 });
             }
         }
@@ -1377,7 +1377,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F11",
+                name: "F11",
             });
         }
         0x58 => {
@@ -1385,7 +1385,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: true,
-                key: "F10",
+                name: "F10",
             });
         }
         0xAA => {
@@ -1396,7 +1396,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: false,
-                key: "LShift",
+                name: "LShift",
             });
         }
         0xE0 => {
@@ -1407,7 +1407,7 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: false,
                 printable: false,
                 pressed: false,
-                key: "E0",
+                name: "E0",
             });
         }
         _ => None,

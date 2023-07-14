@@ -1,8 +1,8 @@
 mod font;
 
-use limine::LimineFramebufferRequest;
+use limine::FramebufferRequest;
 
-pub static FRAMEBUFFER_REQUEST: LimineFramebufferRequest = LimineFramebufferRequest::new(0);
+pub static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new(0);
 
 pub fn init_video() {
     put_char(62, 0, 0, 0xFFFFFF, 0x000000);

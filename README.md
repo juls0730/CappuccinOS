@@ -1,5 +1,5 @@
-# Toto OS
-Toto OS is a small x86-64 operating system written from scratch in rust. This README will guide you through the process of building and running Toto OS.
+# CappuccinOS
+CappuccinOS is a small x86-64 operating system written from scratch in rust. This README will guide you through the process of building and running CappuccinOS.
 
 ## Features
 - [X] Serial output
@@ -27,17 +27,17 @@ Toto OS is a small x86-64 operating system written from scratch in rust. This RE
 - [ ] RTC Clock
 
 ## Setup
-Before building Toto OS, make sure you have the following installed on your machine:
+Before building CappuccinOS, make sure you have the following installed on your machine:
 
 - rust
 - binutils
-- parted
+- xorriso
 - qemu (optional)
 
 Clone the repo:
 ```BASH
-git clone --recurse-submodules https://github.com/juls0730/toto-os.git
-cd toto-os
+git clone --recurse-submodules https://github.com/juls0730/CappuccinOS.git
+cd CappuccinOS
 ```
 
 Install rust, and switch to the nightly build:
@@ -47,21 +47,21 @@ rustup override set nightly
 ```
 
 ## Usage
-Build the image to `bin/toto-os.iso`:
+Build the image to `bin/CappuccinOS.iso`:
 ```BASH
 make build
 ```
 
-Run Toto OS with QEMU:
+Run CappuccinOS with QEMU:
 ```BASH
 make run
 ```
 
 Run on a bare metal machine by flashing to a USB stick or hard drive:
 ```
-sudo dd if=bin/toto-os.iso of=/dev/sdX && sync
+sudo dd if=bin/CappuccinOS.iso of=/dev/sdX && sync
 ```
 **Be careful not to overwrite your hard drive when using `dd`!**
 
 ## License
-Toto OS is license under the MIT License. Feel free to modify and distribute in accordance with the license.
+CappuccinOS is license under the MIT License. Feel free to modify and distribute in accordance with the license.

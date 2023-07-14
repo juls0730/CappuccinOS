@@ -76,8 +76,8 @@ impl ChainedPics {
     pub fn initialize(&mut self) {
         // We need to delay writes to our PICs incase we are on a slower
         // machine. writing to port 0x80 should take care of this.
-        let mut wait_port: u8 = 0x80;
-        let mut wait = || outb(wait_port as u16, 0);
+        let wait_port: u8 = 0x80;
+        let wait = || outb(wait_port as u16, 0);
 
         // Tell each PIC we're going to initialize it.
         outb(self.pics[0].command as u16, CMD_INIT);

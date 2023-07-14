@@ -3,14 +3,14 @@
 version = 3
 
 [[package]]
-name = "limine"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e9d0c951056ac044f0e6b09448b9d702f8fb1001db89cffd2bc467bd1c25307"
-
-[[package]]
-name = "toto-os"
+name = "CappuccinOS"
 version = "0.1.0"
 dependencies = [
  "limine",
 ]
+
+[[package]]
+name = "limine"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f45c67c512034e8eb0064556e1db5da671b3ef50791cd6ac6376e7aefc0ef27e"

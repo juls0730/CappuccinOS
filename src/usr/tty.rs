@@ -1,3 +1,5 @@
+use alloc::format;
+
 struct Cursor {
     cx: u16,
     cy: u16,
@@ -54,7 +56,8 @@ fn move_cursor_left() {
         unsafe {
             if CURSOR.cx == 0 {
                 CURSOR.cy -= 1;
-                CURSOR.cx = (framebuffer.width / 8) as u16 - 1;
+								puts(&alloc::format!("{}", CURSOR.cy));
+                CURSOR.cx = (framebuffer.width / 8) as u16 - 2;
             } else {
                 CURSOR.cx -= 1;
             }
@@ -90,26 +93,26 @@ pub fn handle_key(
     key: crate::drivers::keyboard::Key,
     input_buffer: &mut super::shell::InputBuffer,
 ) {
-    if key.key == "Enter" {
+    if key.name == "Enter" {
         puts("\n");
         exec(input_buffer.as_str());
         input_buffer.clear();
         super::shell::prompt();
     }
 
-    if key.key == "Backspace" {
+    if key.name == "Backspace" {
         input_buffer.pop();
         move_cursor_left();
         puts(" ");
         move_cursor_left();
     }
 
-    if key.key.starts_with("Cur") {
-        if key.key.ends_with("Up") || key.key.ends_with("Down") {
+    if key.name.starts_with("Cur") {
+        if key.name.ends_with("Up") || key.name.ends_with("Down") {
             return;
         }
 
-        if key.key.ends_with("Left") {
+        if key.name.ends_with("Left") {
             move_cursor_left();
         } else {
             move_cursor_right();
@@ -117,18 +120,21 @@ pub fn handle_key(
     }
 
     if key.printable {
-        let character = key.key.chars().next().unwrap_or('\0');
+        let character = key.name.chars().next().unwrap_or('\0');
         input_buffer.push(character as u8);
 
-        puts(key.key);
+        puts(key.name);
     }
 }
 
 pub fn exec(command: &str) {
     let mut parts = command.trim().split_whitespace();
-    let command = parts.next().unwrap();
+    let command = parts.next().unwrap_or("");
     let args = parts;
 
-    puts(command);
-    puts("\n");
+    if command == "" {
+        return;
+    }
+
+    puts(&format!("{}\n", command));
 }

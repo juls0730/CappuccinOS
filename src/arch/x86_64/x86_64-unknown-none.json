@@ -6,7 +6,7 @@
 	"target-pointer-width": "64",
 	"target-c-int-width": "32",
 	"features": "-mmx,-sse,+soft-float",
-	"os": "toto-os",
+	"os": "CappuccinOS",
 	"arch": "x86_64",
 	"linker-flavor": "ld",
 	"pre-link-args": { 
