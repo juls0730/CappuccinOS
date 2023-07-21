@@ -79,7 +79,7 @@ extern "x86-interrupt" fn timer_handler() {
 extern "x86-interrupt" fn interrupt_handler() {
     crate::libs::logging::log_error("Unknown error\n");
     unsafe {
-        core::arch::asm!("cli", "sti",);
+        core::arch::asm!("cli", "sti");
     }
 }
 

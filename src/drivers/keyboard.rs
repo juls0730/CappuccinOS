@@ -49,7 +49,7 @@ pub fn init_keyboard(function_ptr: fn(key: Key)) {
 
 static mut FUNCTION_PTR: fn(key: Key) = dummy;
 
-fn dummy(key: Key) {}
+fn dummy(_key: Key) {}
 
 extern "x86-interrupt" fn keyboard_interrupt_handler() {
     unsafe {
@@ -66,10 +66,6 @@ extern "x86-interrupt" fn keyboard_interrupt_handler() {
 }
 
 fn parse_key(scancode: u8) -> Option<Key<'static>> {
-    // If the key was unpressed then return, see guard statements
-    // if (scancode & 128) == 128 {
-    // 	return;
-    // }
     match scancode {
         0x01 => {
             unsafe {

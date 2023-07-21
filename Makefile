@@ -18,7 +18,7 @@ ifeq (${ARCH},)
 	ARCH := x86_64
 endif
 
-.PHONY: clean run build
+.PHONY: clean run build line-count
 
 build: prepare-bin-files compile-bootloader compile-kernel build-iso
 
@@ -67,6 +67,10 @@ compile-kernel:
 run: build
 		qemu-system-x86_64 ${QEMU_OPTS}
 
+line-count:
+		git ls-files src | xargs wc -l
+
 clean:
 		cargo clean
 		rm -rf bin
+		make clean -C limine
