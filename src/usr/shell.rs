@@ -1,12 +1,6 @@
-use alloc::{
-	vec::Vec,
-	borrow::ToOwned,
-	str
-};
+use alloc::{borrow::ToOwned, str, vec::Vec};
 
-static mut INPUT_BUFFER: InputBuffer = InputBuffer {
-    buffer: Vec::new(),
-};
+static mut INPUT_BUFFER: InputBuffer = InputBuffer { buffer: Vec::new() };
 
 pub fn init_shell() {
     crate::drivers::keyboard::init_keyboard(handle_key);
@@ -37,7 +31,7 @@ impl InputBuffer {
 
     pub fn pop(&mut self) {
         if self.buffer.len() > 0 {
-						self.buffer.pop();
+            self.buffer.pop();
         }
     }
 

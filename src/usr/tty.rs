@@ -62,25 +62,25 @@ pub static mut CURSOR: Cursor = Cursor {
 };
 
 fn color_to_hex(color: u8) -> u32 {
-	match color {
-		0 => 0x000000,
-		1 => 0xCD0000,
-		2 => 0x00CD00,
-		3 => 0xCDCD00,
-		4 => 0x0000EE,
-		5 => 0xCD00CD,
-		6 => 0x00CDCD,
-		7 => 0xBABABA,
-		60 => 0x555555,
-		61 => 0xFF0000,
-		62 => 0x00FF00,
-		63 => 0xFFFF00,
-		64 => 0x5C5CFF,
-		65 => 0xFF00FF,
-		66 => 0x00FFFF,
-		67 => 0xFFFFFF,
-		_ => 0x000000
-	}
+    match color {
+        0 => 0x000000,
+        1 => 0xCD0000,
+        2 => 0x00CD00,
+        3 => 0xCDCD00,
+        4 => 0x0000EE,
+        5 => 0xCD00CD,
+        6 => 0x00CDCD,
+        7 => 0xBABABA,
+        60 => 0x555555,
+        61 => 0xFF0000,
+        62 => 0x00FF00,
+        63 => 0xFFFF00,
+        64 => 0x5C5CFF,
+        65 => 0xFF00FF,
+        66 => 0x00FFFF,
+        67 => 0xFFFFFF,
+        _ => 0x000000,
+    }
 }
 
 // Uses a stripped down version of ANSI color codes:
@@ -105,29 +105,29 @@ pub fn puts(string: &str) {
                         .filter_map(|code| code.parse().ok())
                         .collect();
 
-										for code in codes {
-											match code {
-												30..=37 => unsafe { CURSOR.fg = color_to_hex(code - 30) }
-												40..=47 => unsafe { CURSOR.bg = color_to_hex(code - 40) }
-												90..=97 => unsafe { CURSOR.fg = color_to_hex(code - 30) }
-												100..=107 => unsafe { CURSOR.bg = color_to_hex(code - 40) }
-												_ => {}
-											}
-										}
+                    for code in codes {
+                        match code {
+                            30..=37 => unsafe { CURSOR.fg = color_to_hex(code - 30) },
+                            40..=47 => unsafe { CURSOR.bg = color_to_hex(code - 40) },
+                            90..=97 => unsafe { CURSOR.fg = color_to_hex(code - 30) },
+                            100..=107 => unsafe { CURSOR.bg = color_to_hex(code - 40) },
+                            _ => {}
+                        }
+                    }
 
-										color_code_buffer.clear();
+                    color_code_buffer.clear();
                 } else if character.is_ascii_digit() || character == ';' {
                     color_code_buffer.push(character);
                 } else {
-									if character == '[' {
-										// official start of the escape sequence
-										color_code_buffer.clear();
-										continue;
-									}
+                    if character == '[' {
+                        // official start of the escape sequence
+                        color_code_buffer.clear();
+                        continue;
+                    }
 
-									in_escape_sequence = false;
-									color_code_buffer.clear();
-								}
+                    in_escape_sequence = false;
+                    color_code_buffer.clear();
+                }
 
                 continue;
             }
@@ -161,13 +161,13 @@ pub fn puts(string: &str) {
 
 #[macro_export]
 macro_rules! println {
-		() => (print!("\n"));
-		($($arg:tt)*) => (print!("{}\n", &format!($($arg)*)));
+    () => (print!("\n"));
+    ($($arg:tt)*) => (print!("{}\n", &format!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! print {
-		($($arg:tt)*) => (puts(&format!($($arg)*)));
+    ($($arg:tt)*) => (puts(&format!($($arg)*)));
 }
 
 pub fn handle_key(

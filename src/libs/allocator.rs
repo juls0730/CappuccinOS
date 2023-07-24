@@ -3,10 +3,7 @@ use core::cell::UnsafeCell;
 use core::ptr;
 use core::sync::atomic::{
     AtomicUsize,
-    Ordering::{
-			SeqCst,
-			Acquire
-		},
+    Ordering::{Acquire, SeqCst},
 };
 
 // ! Using a basic bump allocator, switch to something like a buddy allocator soon :tm:
@@ -26,14 +23,14 @@ pub static ALLOCATOR: SimpleAllocator = SimpleAllocator {
 };
 
 impl SimpleAllocator {
-	pub fn get_used(&self) -> usize {
-		let currently = self.remaining.load(Acquire);
-		return ARENA_SIZE - currently;
-	}
+    pub fn get_used(&self) -> usize {
+        let currently = self.remaining.load(Acquire);
+        return ARENA_SIZE - currently;
+    }
 
-	pub fn get_free(&self) -> usize {
-		return self.remaining.load(Acquire);
-	}
+    pub fn get_free(&self) -> usize {
+        return self.remaining.load(Acquire);
+    }
 }
 
 unsafe impl Sync for SimpleAllocator {}
