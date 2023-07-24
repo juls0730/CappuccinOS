@@ -1,4 +1,4 @@
-use crate::usr::tty::{puts, set_color};
+use crate::usr::tty::{puts, CURSOR};
 
 pub fn log_info(msg: &str) {
     log_indicator(0xcacaca);
@@ -26,4 +26,10 @@ fn log_indicator(indicator_color: u32) {
     puts("*");
     set_color(0xffffff);
     puts(" ]  ");
+}
+
+fn set_color(new_fg: u32) {
+    unsafe {
+        CURSOR.set_color(new_fg, 0x000000);
+    }
 }

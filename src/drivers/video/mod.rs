@@ -4,11 +4,6 @@ use limine::FramebufferRequest;
 
 pub static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new(0);
 
-pub fn init_video() {
-    put_char(62, 0, 0, 0xFFFFFF, 0x000000);
-    put_char(32, 1, 0, 0xFFFFFF, 0x000000);
-}
-
 // This is slow, but significantly faster than filling the framebuffer pixel-by-pixel with for loops.
 // idk, fix it later ig.
 pub fn fill_screen(color: u32) {

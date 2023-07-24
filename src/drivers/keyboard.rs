@@ -2,16 +2,17 @@
 
 use crate::{arch::interrupts, libs::io::inb};
 
-struct ModStatuses {
-    escape: bool,
-    tab: bool,
-    win: bool,
-    ctrl: bool,
-    alt: bool,
-    shift: bool,
-    caps: bool,
-    num_lock: bool,
-    scr_lock: bool,
+#[derive(Clone, Copy)]
+pub struct ModStatuses {
+    pub escape: bool,
+    pub tab: bool,
+    pub win: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub caps: bool,
+    pub num_lock: bool,
+    pub scr_lock: bool,
 }
 
 pub struct Key<'a> {
@@ -35,7 +36,7 @@ static mut MOD_STATUSES: ModStatuses = ModStatuses {
     scr_lock: false,
 };
 
-pub fn init_keyboard(function_ptr: fn(key: Key)) {
+pub fn init_keyboard(function_ptr: fn(key: Key, mods: ModStatuses)) {
     unsafe { FUNCTION_PTR = function_ptr }
 
     interrupts::idt_set_gate(
@@ -47,9 +48,9 @@ pub fn init_keyboard(function_ptr: fn(key: Key)) {
     crate::libs::logging::log_ok("Keyboard initialized\n");
 }
 
-static mut FUNCTION_PTR: fn(key: Key) = dummy;
+static mut FUNCTION_PTR: fn(key: Key, mods: ModStatuses) = dummy;
 
-fn dummy(_key: Key) {}
+fn dummy(_key: Key, _mods: ModStatuses) {}
 
 extern "x86-interrupt" fn keyboard_interrupt_handler() {
     unsafe {
@@ -61,7 +62,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler() {
     let key = parse_key(scancode);
 
     if let Some(key) = key {
-        unsafe { FUNCTION_PTR(key) }
+        unsafe { FUNCTION_PTR(key, MOD_STATUSES) }
     }
 }
 

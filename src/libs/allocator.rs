@@ -3,7 +3,10 @@ use core::cell::UnsafeCell;
 use core::ptr;
 use core::sync::atomic::{
     AtomicUsize,
-    Ordering::{Acquire, SeqCst},
+    Ordering::{
+			SeqCst,
+			Acquire
+		},
 };
 
 // ! Using a basic bump allocator, switch to something like a buddy allocator soon :tm:
@@ -11,16 +14,27 @@ const ARENA_SIZE: usize = 128 * 1024;
 const MAX_SUPPORTED_ALIGN: usize = 4096;
 
 #[repr(C, align(4096))]
-struct SimpleAllocator {
+pub struct SimpleAllocator {
     arena: UnsafeCell<[u8; ARENA_SIZE]>,
-    remaining: AtomicUsize,
+    pub remaining: AtomicUsize,
 }
 
 #[global_allocator]
-static ALLOCATOR: SimpleAllocator = SimpleAllocator {
+pub static ALLOCATOR: SimpleAllocator = SimpleAllocator {
     arena: UnsafeCell::new([0x55; ARENA_SIZE]),
     remaining: AtomicUsize::new(ARENA_SIZE),
 };
+
+impl SimpleAllocator {
+	pub fn get_used(&self) -> usize {
+		let currently = self.remaining.load(Acquire);
+		return ARENA_SIZE - currently;
+	}
+
+	pub fn get_free(&self) -> usize {
+		return self.remaining.load(Acquire);
+	}
+}
 
 unsafe impl Sync for SimpleAllocator {}
 

@@ -1,19 +1,64 @@
-use alloc::format;
+use crate::{print, println};
+use alloc::{borrow::ToOwned, format, vec::Vec};
 
-struct Cursor {
+pub struct Cursor {
     cx: u16,
     cy: u16,
     fg: u32,
     bg: u32,
 }
 
-static mut CURSOR: Cursor = Cursor {
+impl Cursor {
+    fn set_pos(&mut self, new_cx: u16, new_cy: u16) {
+        self.cx = new_cx;
+        self.cy = new_cy;
+    }
+
+    fn move_right(&mut self) {
+        if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+            .get_response()
+            .get()
+        {
+            let framebuffer = &framebuffer_response.framebuffers()[0];
+
+            if self.cx == (framebuffer.width / 8) as u16 - 1 {
+                self.cy += 1;
+                self.cx = 0;
+            } else {
+                self.cx += 1;
+            }
+        }
+    }
+
+    fn move_left(&mut self) {
+        if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+            .get_response()
+            .get()
+        {
+            let framebuffer = &framebuffer_response.framebuffers()[0];
+
+            if self.cx == 0 {
+                self.cx = (framebuffer.width / 8) as u16 - 2;
+            } else {
+                self.cx -= 1;
+            }
+        }
+    }
+
+    pub fn set_color(&mut self, new_fg: u32, new_bg: u32) {
+        self.fg = new_fg;
+        self.bg = new_bg;
+    }
+}
+
+pub static mut CURSOR: Cursor = Cursor {
     cx: 0,
     cy: 0,
     fg: 0xbababa,
     bg: 0x000000,
 };
 
+// TODO: parse and use ANSI color codes
 pub fn puts(string: &str) {
     if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
         .get_response()
@@ -24,13 +69,11 @@ pub fn puts(string: &str) {
         for (_i, character) in string.chars().enumerate() {
             unsafe {
                 if CURSOR.cx == (framebuffer.width / 8) as u16 - 1 {
-                    CURSOR.cy += 1;
-                    CURSOR.cx = 0;
+                    CURSOR.set_pos(0, CURSOR.cy + 1);
                 }
                 // Newline character
                 if character as u8 == 10 {
-                    CURSOR.cx = 0;
-                    CURSOR.cy += 1;
+                    CURSOR.set_pos(0, CURSOR.cy + 1);
                 } else {
                     crate::drivers::video::put_char(
                         character as u8,
@@ -39,72 +82,47 @@ pub fn puts(string: &str) {
                         CURSOR.fg,
                         CURSOR.bg,
                     );
-                    CURSOR.cx += 1;
+                    CURSOR.set_pos(CURSOR.cx + 1, CURSOR.cy);
                 }
             }
         }
     }
 }
 
-fn move_cursor_left() {
-    if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
-        .get_response()
-        .get()
-    {
-        let framebuffer = &framebuffer_response.framebuffers()[0];
-
-        unsafe {
-            if CURSOR.cx == 0 {
-                CURSOR.cy -= 1;
-								puts(&alloc::format!("{}", CURSOR.cy));
-                CURSOR.cx = (framebuffer.width / 8) as u16 - 2;
-            } else {
-                CURSOR.cx -= 1;
-            }
-        }
-    }
+#[macro_export]
+macro_rules! println {
+		() => (print!("\n"));
+		($($arg:tt)*) => (print!("{}\n", &format!($($arg)*)));
 }
 
-fn move_cursor_right() {
-    if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
-        .get_response()
-        .get()
-    {
-        let framebuffer = &framebuffer_response.framebuffers()[0];
-
-        unsafe {
-            if CURSOR.cx == (framebuffer.width / 8) as u16 - 1 {
-                CURSOR.cy += 1;
-                CURSOR.cx = 0;
-            } else {
-                CURSOR.cx += 1;
-            }
-        }
-    }
-}
-
-pub fn set_color(color: u32) {
-    unsafe {
-        CURSOR.fg = color;
-    }
+#[macro_export]
+macro_rules! print {
+		($($arg:tt)*) => (puts(&format!($($arg)*)));
 }
 
 pub fn handle_key(
     key: crate::drivers::keyboard::Key,
     input_buffer: &mut super::shell::InputBuffer,
+    mods: crate::drivers::keyboard::ModStatuses,
 ) {
-    if key.name == "Enter" {
+    if key.name == "Enter" || (mods.ctrl == true && key.name == "c") {
         puts("\n");
         exec(input_buffer.as_str());
         input_buffer.clear();
         super::shell::prompt();
+        return;
     }
 
     if key.name == "Backspace" {
         input_buffer.pop();
-        move_cursor_left();
+        unsafe {
+            CURSOR.move_left();
+        }
         puts(" ");
-        move_cursor_left();
+        unsafe {
+            CURSOR.move_left();
+        }
+        return;
     }
 
     if key.name.starts_with("Cur") {
@@ -113,9 +131,15 @@ pub fn handle_key(
         }
 
         if key.name.ends_with("Left") {
-            move_cursor_left();
+            unsafe {
+                CURSOR.move_left();
+            }
+            return;
         } else {
-            move_cursor_right();
+            unsafe {
+                CURSOR.move_left();
+            }
+            return;
         }
     }
 
@@ -130,11 +154,29 @@ pub fn handle_key(
 pub fn exec(command: &str) {
     let mut parts = command.trim().split_whitespace();
     let command = parts.next().unwrap_or("");
-    let args = parts;
+    let args = parts.collect::<Vec<&str>>();
 
     if command == "" {
         return;
     }
 
-    puts(&format!("{}\n", command));
+    if command == "memstat" {
+        let allocator = &crate::libs::allocator::ALLOCATOR;
+        println!(
+            "Allocated so far: {}\nFree memory: {}",
+            allocator.get_used(),
+            allocator.get_free()
+        );
+        return;
+    }
+
+    print!("{} ", command);
+    print!("[");
+    for (i, arg) in args.iter().enumerate() {
+        print!("{}", arg);
+        if i != args.len() - 1 {
+            print!(", ");
+        }
+    }
+    println!("]");
 }

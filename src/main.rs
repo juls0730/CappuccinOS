@@ -5,6 +5,7 @@
 extern crate alloc;
 
 mod api;
+
 mod drivers;
 mod libs;
 mod usr;
@@ -43,7 +44,8 @@ pub extern "C" fn _start() -> ! {
 }
 
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    println!("{}", info);
     loop {
         unsafe {
             core::arch::asm!("hlt");
