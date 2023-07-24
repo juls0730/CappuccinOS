@@ -54,7 +54,7 @@ compile-user-bins:
 		basename -s .rs src/bin/*.rs | xargs -I {} \
 			touch bin/iso_root/bin/{}
 		basename -s .rs src/bin/*.rs | xargs -I {} \
-			cargo rustc --target=src/arch/${ARCH}/${ARCH}-unknown-none.json --release --bin {}
+			cargo rustc ${CARGO_OPTS} --bin {}
 		basename -s .rs src/bin/*.rs | xargs -I {} \
 			cp target/${ARCH}-unknown-none/${MODE}/{}.elf bin/iso_root/bin/{}
 

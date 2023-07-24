@@ -35,8 +35,6 @@ pub extern "C" fn _start() -> ! {
     usr::shell::init_shell();
 
     loop {
-        // Interrupts still work, and this will prevent 100% CPU usage on one core.
-        // I am unaware of the consequences of this and am unsure if this will stay permanently.
         unsafe {
             core::arch::asm!("hlt");
         }

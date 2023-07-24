@@ -1,5 +1,8 @@
-use crate::{print, println};
-use alloc::{borrow::ToOwned, format, vec::Vec};
+use crate::{
+    drivers::video::{fill_screen, put_pixel},
+    print, println,
+};
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 
 pub struct Cursor {
     cx: u16,
@@ -58,7 +61,30 @@ pub static mut CURSOR: Cursor = Cursor {
     bg: 0x000000,
 };
 
-// TODO: parse and use ANSI color codes
+fn color_to_hex(color: u8) -> u32 {
+	match color {
+		0 => 0x000000,
+		1 => 0xCD0000,
+		2 => 0x00CD00,
+		3 => 0xCDCD00,
+		4 => 0x0000EE,
+		5 => 0xCD00CD,
+		6 => 0x00CDCD,
+		7 => 0xBABABA,
+		60 => 0x555555,
+		61 => 0xFF0000,
+		62 => 0x00FF00,
+		63 => 0xFFFF00,
+		64 => 0x5C5CFF,
+		65 => 0xFF00FF,
+		66 => 0x00FFFF,
+		67 => 0xFFFFFF,
+		_ => 0x000000
+	}
+}
+
+// Uses a stripped down version of ANSI color codes:
+// \033[FG;BGm
 pub fn puts(string: &str) {
     if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
         .get_response()
@@ -66,7 +92,51 @@ pub fn puts(string: &str) {
     {
         let framebuffer = &framebuffer_response.framebuffers()[0];
 
+        let mut in_escape_sequence = false;
+        let mut color_code_buffer = String::new();
+
         for (_i, character) in string.chars().enumerate() {
+            if in_escape_sequence {
+                if character == 'm' {
+                    in_escape_sequence = false;
+
+                    let codes: Vec<u8> = color_code_buffer
+                        .split(';')
+                        .filter_map(|code| code.parse().ok())
+                        .collect();
+
+										for code in codes {
+											match code {
+												30..=37 => unsafe { CURSOR.fg = color_to_hex(code - 30) }
+												40..=47 => unsafe { CURSOR.bg = color_to_hex(code - 40) }
+												90..=97 => unsafe { CURSOR.fg = color_to_hex(code - 30) }
+												100..=107 => unsafe { CURSOR.bg = color_to_hex(code - 40) }
+												_ => {}
+											}
+										}
+
+										color_code_buffer.clear();
+                } else if character.is_ascii_digit() || character == ';' {
+                    color_code_buffer.push(character);
+                } else {
+									if character == '[' {
+										// official start of the escape sequence
+										color_code_buffer.clear();
+										continue;
+									}
+
+									in_escape_sequence = false;
+									color_code_buffer.clear();
+								}
+
+                continue;
+            }
+
+            if character == '\0' {
+                in_escape_sequence = true;
+                continue;
+            }
+
             unsafe {
                 if CURSOR.cx == (framebuffer.width / 8) as u16 - 1 {
                     CURSOR.set_pos(0, CURSOR.cy + 1);
@@ -106,6 +176,9 @@ pub fn handle_key(
     mods: crate::drivers::keyboard::ModStatuses,
 ) {
     if key.name == "Enter" || (mods.ctrl == true && key.name == "c") {
+        if input_buffer.as_str().starts_with(r#"\033"#) {
+            puts("Unicode 1B");
+        }
         puts("\n");
         exec(input_buffer.as_str());
         input_buffer.clear();
