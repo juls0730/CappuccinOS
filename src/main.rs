@@ -20,17 +20,7 @@ use usr::tty::puts;
 pub extern "C" fn _start() -> ! {
     serial::init_serial();
 
-    let message = b"Hello world from the kernel.";
-
-    for (_i, &byte) in message.iter().enumerate() {
-        serial::write_serial(byte);
-    }
-
-    arch::interrupts::idt_init();
-
-    unsafe {
-        arch::interrupts::PICS.initialize();
-    }
+    arch::interrupts::init();
 
     usr::shell::init_shell();
 
@@ -43,7 +33,7 @@ pub extern "C" fn _start() -> ! {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    println!("{}", info);
+    libs::logging::log_error(&format!("{}", info));
     loop {
         unsafe {
             core::arch::asm!("hlt");

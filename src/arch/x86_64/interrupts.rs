@@ -67,7 +67,6 @@ pub fn idt_set_gate(num: u8, function_ptr: extern "x86-interrupt" fn(), sel: u16
     }
 }
 
-// clear the interrupt and pretend like it never happened
 extern "x86-interrupt" fn timer_handler() {
     // crate::drivers::video::puts(".");
     unsafe {
@@ -77,13 +76,13 @@ extern "x86-interrupt" fn timer_handler() {
 
 // clear the interrupt and pretend like it never happened
 extern "x86-interrupt" fn interrupt_handler() {
-    crate::libs::logging::log_error("Unknown error\n");
+    crate::libs::logging::log_error("Unknown error");
     unsafe {
         core::arch::asm!("cli", "sti");
     }
 }
 
-pub fn idt_init() {
+fn idt_init() {
     unsafe {
         let idt_size = core::mem::size_of::<IdtEntry>() * 256;
         IDT_PTR.limit = idt_size as u16 - 1;
@@ -104,6 +103,14 @@ pub fn idt_init() {
             in(reg) &IDT_PTR
         );
 
-        crate::libs::logging::log_ok("Interrupt Descriptor Table\n");
+        crate::libs::logging::log_ok("Interrupt Descriptor Table");
+    }
+}
+
+pub fn init() {
+    idt_init();
+
+    unsafe {
+        PICS.initialize();
     }
 }

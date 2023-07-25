@@ -42,6 +42,7 @@ impl Cursor {
 
             if self.cx == 0 {
                 self.cx = (framebuffer.width / 8) as u16 - 2;
+                self.cy -= 1;
             } else {
                 self.cx -= 1;
             }
@@ -176,9 +177,6 @@ pub fn handle_key(
     mods: crate::drivers::keyboard::ModStatuses,
 ) {
     if key.name == "Enter" || (mods.ctrl == true && key.name == "c") {
-        if input_buffer.as_str().starts_with(r#"\033"#) {
-            puts("Unicode 1B");
-        }
         puts("\n");
         exec(input_buffer.as_str());
         input_buffer.clear();
@@ -186,7 +184,7 @@ pub fn handle_key(
         return;
     }
 
-    if key.name == "Backspace" {
+    if key.name == "Backspace" && input_buffer.buffer.len() > 0 {
         input_buffer.pop();
         unsafe {
             CURSOR.move_left();

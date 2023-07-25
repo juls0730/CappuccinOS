@@ -17,7 +17,7 @@ pub fn prompt() {
 }
 
 pub struct InputBuffer {
-    buffer: Vec<u8>,
+    pub buffer: Vec<u8>,
 }
 
 impl InputBuffer {

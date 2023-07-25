@@ -45,7 +45,7 @@ pub fn init_keyboard(function_ptr: fn(key: Key, mods: ModStatuses)) {
         0x28,
         0xEE,
     );
-    crate::libs::logging::log_ok("Keyboard initialized\n");
+    crate::libs::logging::log_ok("Keyboard initialized");
 }
 
 static mut FUNCTION_PTR: fn(key: Key, mods: ModStatuses) = dummy;

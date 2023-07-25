@@ -16,13 +16,13 @@ pub fn init_serial() -> u8 {
 
     // Check if serial is faulty
     if inb(PORT + 0) != 0xAE {
-        crate::libs::logging::log_error("Serial Driver failed to initialize\n");
+        crate::libs::logging::log_error("Serial Driver failed to initialize");
         return 1;
     }
 
     // Set serial in normal operation mode
     outb(PORT + 4, 0x0F);
-    crate::libs::logging::log_ok("Serial Driver successfully initialized\n");
+    crate::libs::logging::log_ok("Serial Driver successfully initialized");
     return 0;
 }
 
