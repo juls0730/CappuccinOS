@@ -1,9 +1,11 @@
-use core::alloc::{GlobalAlloc, Layout};
-use core::cell::UnsafeCell;
-use core::ptr;
-use core::sync::atomic::{
-    AtomicUsize,
-    Ordering::{Acquire, SeqCst},
+use core::{
+    sync::atomic::{
+        AtomicUsize,
+        Ordering::{Acquire, SeqCst},
+    },
+    alloc::{GlobalAlloc, Layout},
+    cell::UnsafeCell,
+    ptr
 };
 
 // ! Using a basic bump allocator, switch to something like a buddy allocator soon :tm:
