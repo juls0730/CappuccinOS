@@ -5,11 +5,11 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 - [X] Serial output
 - [X] Hardware interrupts
 - [X] PS/2 Keyboard support
+- [X] ANSI color codes in console
 - [ ] Use APIC instead of PIC
 - [ ] Roll my own bootloader
 	- [ ] x86 CPU support
 	- [ ] armv8 CPU support
-- [ ] ANSI color codes in console
 - [ ] File system
 - [ ] Basic shell
 - [ ] Lua interpreter

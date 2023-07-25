@@ -9,8 +9,7 @@ mod api;
 mod drivers;
 mod libs;
 mod usr;
-
-pub mod arch;
+mod arch;
 
 use alloc::{format, vec::Vec};
 use drivers::{serial, video};
