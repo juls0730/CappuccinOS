@@ -3,11 +3,11 @@ name = "CappuccinOS"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+limine = "0.1.10"
+
 [profile.dev]
 panic = "abort"
 
 [profile.release]
 panic = "abort"
-
-[dependencies]
-limine = "0.1.10"

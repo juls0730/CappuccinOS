@@ -26,7 +26,7 @@ pub fn fill_screen(color: u32) {
     }
 }
 
-pub fn put_char(character: u8, cx: u16, cy: u16, fg: u32, bg: u32) {
+pub fn put_char(character: char, cx: u16, cy: u16, fg: u32, bg: u32) {
     let font = font::G_8X16_FONT;
 
     let character_array = font[character as usize];

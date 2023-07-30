@@ -11,9 +11,8 @@ mod libs;
 mod usr;
 mod arch;
 
-use alloc::{format, vec::Vec};
-use drivers::{serial, video};
-use usr::tty::puts;
+use alloc::format;
+use drivers::serial;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {

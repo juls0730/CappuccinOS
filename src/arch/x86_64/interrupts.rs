@@ -39,10 +39,6 @@ impl InterruptIndex {
     pub fn as_u8(self) -> u8 {
         self as u8
     }
-
-    fn as_usize(self) -> usize {
-        usize::from(self.as_u8())
-    }
 }
 
 pub const PIC_1_OFFSET: u8 = 32;
@@ -68,7 +64,7 @@ pub fn idt_set_gate(num: u8, function_ptr: extern "x86-interrupt" fn(), sel: u16
 }
 
 extern "x86-interrupt" fn timer_handler() {
-    // crate::drivers::video::puts(".");
+    // crate::usr::tty::puts(".");
     unsafe {
         PICS.notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
@@ -91,7 +87,7 @@ fn idt_init() {
         core::ptr::write_bytes(IDT.as_mut_ptr() as *mut core::ffi::c_void, 0, idt_size);
 
         // Set every interrupt to the default interrupt handler
-        for num in 0..(idt_size - 1) {
+        for num in 0..(idt_size) {
             idt_set_gate(num as u8, interrupt_handler, 0x28, 0xEE);
         }
 

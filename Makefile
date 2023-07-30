@@ -20,7 +20,7 @@ endif
 
 .PHONY: clean run build line-count
 
-build: prepare-bin-files compile-bootloader compile-kernel build-iso
+build: prepare-bin-files compile-bootloader compile-binaries build-iso
 
 prepare-bin-files:
 		rm -rf bin/iso_root
@@ -28,18 +28,27 @@ prepare-bin-files:
 		mkdir -p bin/iso_root
 
 copy-iso-files:
-		mkdir -p bin/iso_root/bin
+		# Limine files
 		mkdir -p bin/iso_root/boot/limine
-		cp -v target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf bin/iso_root/boot
-		cp -v limine.cfg limine/limine-bios.sys \
-      limine/limine-bios-cd.bin limine/limine-uefi-cd.bin bin/iso_root/boot/limine
 		mkdir -p bin/iso_root/boot/EFI/BOOT
+
+		cp -v limine.cfg limine/limine-bios.sys \
+      		limine/limine-bios-cd.bin limine/limine-uefi-cd.bin bin/iso_root/boot/limine
 		cp -v limine/BOOTX64.EFI bin/iso_root/boot/EFI/BOOT/
 		cp -v limine/BOOTIA32.EFI bin/iso_root/boot/EFI/BOOT/
+
+		# OS files
+		cp -v target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf bin/iso_root/boot
+
+		# Application files
+		mkdir -p bin/iso_root/bin
+		basename -s .rs src/bin/*.rs | xargs -I {} \
+			cp target/${ARCH}-unknown-none/${MODE}/{}.elf bin/iso_root/bin/{}
+
 		touch bin/iso_root/example.txt
 		echo "Hello World" > bin/iso_root/example.txt
 
-build-iso: copy-iso-files compile-user-bins
+build-iso: copy-iso-files
 		xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
 		        -no-emul-boot -boot-load-size 4 -boot-info-table \
 		        --efi-boot boot/limine/limine-uefi-cd.bin \
@@ -50,15 +59,7 @@ build-iso: copy-iso-files compile-user-bins
 compile-bootloader:
 		make -C limine
 
-compile-user-bins:
-		basename -s .rs src/bin/*.rs | xargs -I {} \
-			touch bin/iso_root/bin/{}
-		basename -s .rs src/bin/*.rs | xargs -I {} \
-			cargo rustc ${CARGO_OPTS} --bin {}
-		basename -s .rs src/bin/*.rs | xargs -I {} \
-			cp target/${ARCH}-unknown-none/${MODE}/{}.elf bin/iso_root/bin/{}
-
-compile-kernel:
+compile-binaries:
 		cargo build ${CARGO_OPTS}
 
 # In debug mode, open a terminal and run this command:

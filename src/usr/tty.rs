@@ -1,8 +1,5 @@
-use crate::{
-    drivers::video::{fill_screen, put_pixel},
-    print, println,
-};
-use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
+use crate::{print, println};
+use alloc::{borrow::ToOwned, format, str, string::String, vec::Vec};
 
 pub struct Cursor {
     cx: u16,
@@ -49,8 +46,11 @@ impl Cursor {
         }
     }
 
-    pub fn set_color(&mut self, new_fg: u32, new_bg: u32) {
+    pub fn set_fg(&mut self, new_fg: u32) {
         self.fg = new_fg;
+    }
+
+    pub fn set_bg(&mut self, new_bg: u32) {
         self.bg = new_bg;
     }
 }
@@ -87,74 +87,59 @@ fn color_to_hex(color: u8) -> u32 {
 // Uses a stripped down version of ANSI color codes:
 // \033[FG;BGm
 pub fn puts(string: &str) {
-    if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
-        .get_response()
-        .get()
-    {
-        let framebuffer = &framebuffer_response.framebuffers()[0];
+    let mut in_escape_sequence = false;
+    let mut color_code_buffer = String::new();
 
-        let mut in_escape_sequence = false;
-        let mut color_code_buffer = String::new();
+    for (_i, character) in string.chars().enumerate() {
+        if in_escape_sequence {
+            if character == 'm' {
+                in_escape_sequence = false;
 
-        for (_i, character) in string.chars().enumerate() {
-            if in_escape_sequence {
-                if character == 'm' {
-                    in_escape_sequence = false;
+                let codes: Vec<u8> = color_code_buffer
+                    .split(';')
+                    .filter_map(|code| code.parse().ok())
+                    .collect();
 
-                    let codes: Vec<u8> = color_code_buffer
-                        .split(';')
-                        .filter_map(|code| code.parse().ok())
-                        .collect();
-
-                    for code in codes {
-                        match code {
-                            30..=37 => unsafe { CURSOR.fg = color_to_hex(code - 30) },
-                            40..=47 => unsafe { CURSOR.bg = color_to_hex(code - 40) },
-                            90..=97 => unsafe { CURSOR.fg = color_to_hex(code - 30) },
-                            100..=107 => unsafe { CURSOR.bg = color_to_hex(code - 40) },
-                            _ => {}
-                        }
+                for code in codes {
+                    match code {
+                        30..=37 => unsafe { CURSOR.set_fg(color_to_hex(code - 30)) },
+                        40..=47 => unsafe { CURSOR.set_bg(color_to_hex(code - 40)) },
+                        90..=97 => unsafe { CURSOR.set_fg(color_to_hex(code - 30)) },
+                        100..=107 => unsafe { CURSOR.set_bg(color_to_hex(code - 40)) },
+                        _ => {}
                     }
-
-                    color_code_buffer.clear();
-                } else if character.is_ascii_digit() || character == ';' {
-                    color_code_buffer.push(character);
-                } else {
-                    if character == '[' {
-                        // official start of the escape sequence
-                        color_code_buffer.clear();
-                        continue;
-                    }
-
-                    in_escape_sequence = false;
-                    color_code_buffer.clear();
                 }
 
-                continue;
+                color_code_buffer.clear();
+            } else if character.is_ascii_digit() || character == ';' {
+                color_code_buffer.push(character);
+            } else {
+                if character == '[' {
+                    // official start of the escape sequence
+                    color_code_buffer.clear();
+                    continue;
+                }
+
+                in_escape_sequence = false;
+                color_code_buffer.clear();
             }
 
-            if character == '\0' {
-                in_escape_sequence = true;
-                continue;
-            }
+            continue;
+        }
 
-            unsafe {
-                if CURSOR.cx == (framebuffer.width / 8) as u16 - 1 {
-                    CURSOR.set_pos(0, CURSOR.cy + 1);
-                }
-                // Newline character
-                if character as u8 == 10 {
-                    CURSOR.set_pos(0, CURSOR.cy + 1);
-                } else {
-                    crate::drivers::video::put_char(
-                        character as u8,
-                        CURSOR.cx,
-                        CURSOR.cy,
-                        CURSOR.fg,
-                        CURSOR.bg,
-                    );
-                    CURSOR.set_pos(CURSOR.cx + 1, CURSOR.cy);
-                }
+        if character == '\0' {
+            in_escape_sequence = true;
+            continue;
+        }
+
+        unsafe {
+            if character == '\n' {
+                CURSOR.set_pos(0, CURSOR.cy + 1);
+            } else {
+                crate::drivers::video::put_char(
+                    character, CURSOR.cx, CURSOR.cy, CURSOR.fg, CURSOR.bg,
+                );
+                CURSOR.move_right();
             }
         }
     }
@@ -171,11 +156,36 @@ macro_rules! print {
     ($($arg:tt)*) => (puts(&format!($($arg)*)));
 }
 
-pub fn handle_key(
-    key: crate::drivers::keyboard::Key,
-    input_buffer: &mut super::shell::InputBuffer,
-    mods: crate::drivers::keyboard::ModStatuses,
-) {
+pub struct InputBuffer {
+    pub buffer: Vec<u8>,
+}
+
+impl InputBuffer {
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+
+    pub fn push(&mut self, value: u8) {
+        self.buffer.push(value);
+    }
+
+    pub fn pop(&mut self) {
+        if self.buffer.len() > 0 {
+            self.buffer.pop();
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        // Convert the buffer to a string slice for convenience
+        str::from_utf8(&self.buffer).unwrap_or("")
+    }
+}
+
+static mut INPUT_BUFFER: InputBuffer = InputBuffer { buffer: Vec::new() };
+
+pub fn handle_key(key: crate::drivers::keyboard::Key, mods: crate::drivers::keyboard::ModStatuses) {
+    let input_buffer = unsafe { &mut INPUT_BUFFER };
+
     if key.name == "Enter" || (mods.ctrl == true && key.name == "c") {
         puts("\n");
         exec(input_buffer.as_str());
@@ -223,9 +233,7 @@ pub fn handle_key(
 }
 
 pub fn exec(command: &str) {
-    let mut parts = command.trim().split_whitespace();
-    let command = parts.next().unwrap_or("");
-    let args = parts.collect::<Vec<&str>>();
+    let (command, args) = parse_input(command.trim());
 
     if command == "" {
         return;
@@ -250,4 +258,76 @@ pub fn exec(command: &str) {
         }
     }
     println!("]");
+}
+
+fn parse_input(input: &str) -> (String, Vec<String>) {
+    let mut command = String::new();
+    let mut args: Vec<String> = Vec::new();
+    let mut iter = input.trim().chars().peekable();
+
+    let mut i: usize = 0;
+    while let Some(char) = iter.next() {
+        match char {
+            ' ' => continue,
+            '"' | '\'' => {
+                let mut escape_char = '"';
+                if char == '\'' {
+                    escape_char = '\'';
+                }
+                let mut arg = String::new();
+
+                while let Some(ch) = iter.next() {
+                    match ch {
+                        '\\' => {
+                            if let Some(next_char) = iter.next() {
+                                let escaped = match next_char {
+                                    'n' => '\n',
+                                    't' => '\t',
+                                    '\\' => '\\',
+                                    '\'' => '\'',
+                                    '"' => '"',
+                                    _ => next_char, // You can add more escape sequences if needed
+                                };
+                                arg.push(escaped);
+                            }
+                        }
+                        '"' | '\'' => {
+                            if ch == escape_char {
+                                break;
+                            }
+
+                            arg.push(ch);
+                        }
+                        _ => arg.push(ch),
+                    }
+                }
+
+                if i == 0 {
+                    command = arg;
+                } else {
+                    args.push(arg);
+                }
+            }
+            _ => {
+                let mut arg = String::new();
+                arg.push(char);
+
+                while let Some(ch) = iter.peek() {
+                    match ch {
+                        &' ' | &'"' | &'\'' => break,
+                        _ => arg.push(iter.next().unwrap()),
+                    }
+                }
+
+                if i == 0 {
+                    command = arg;
+                } else {
+                    args.push(arg);
+                }
+            }
+        }
+        i += 1;
+    }
+
+    return (command, args);
 }

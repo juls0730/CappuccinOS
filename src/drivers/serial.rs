@@ -3,6 +3,15 @@ use crate::libs::io::{inb, outb};
 // COM1
 pub static PORT: u16 = 0x3f8;
 
+// Serial ports are as follows:
+// PORT + 0: Data register. 
+//           Reading this recieves from this buffer.
+//           Writing to this writes to the transmit buffer.
+// PORT + 1: Interrupt enable register.
+// PORT + 2: Interrupt identification and FIFO control registers.
+// PORT + 3: Line control register, this sets DLAB to the most significant bit.
+// PORT + 4: Modem control register
+
 pub fn init_serial() -> u8 {
     outb(PORT + 1, 0x00);
     outb(PORT + 3, 0x80);

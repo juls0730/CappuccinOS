@@ -308,14 +308,14 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    name: "a",
+                    name: "q",
                 });
             } else {
                 return Some(Key {
                     mod_key: false,
                     printable: true,
                     pressed: true,
-                    name: "A",
+                    name: "Q",
                 });
             }
         }
@@ -1383,6 +1383,17 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 printable: false,
                 pressed: true,
                 name: "F10",
+            });
+        }
+        0x81 => {
+            unsafe {
+                MOD_STATUSES.escape = false;
+            }
+            return Some(Key {
+                mod_key: true,
+                printable: false,
+                pressed: false,
+                name: "Esc"
             });
         }
         0xAA => {
