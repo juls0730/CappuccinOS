@@ -196,7 +196,7 @@ unsafe impl GlobalAlloc for BuddyAllocator {
             if let Some(buddy) = self.buddy(order, block) {
                 if self.free_list_remove(order, block) {
                     block = min(block, buddy);
-                    return;
+                    continue;
                 }
             }
 
