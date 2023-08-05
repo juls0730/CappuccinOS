@@ -240,13 +240,12 @@ pub fn exec(command: &str) {
     }
 
     if command == "memstat" {
-        // let allocator = &crate::libs::allocator::ALLOCATOR;
-        // println!(
-        //     "Allocated so far: {}\nFree memory: {}",
-        //     allocator.get_used(),
-        //     allocator.get_free()
-        // );
-				println!("Unknown....");
+        let allocator = &crate::libs::allocator::ALLOCATOR;
+        println!(
+            "Allocated so far: {}\nFree memory: {}",
+            allocator.get_used_mem(),
+            allocator.get_free_mem()
+        );
         return;
     }
 

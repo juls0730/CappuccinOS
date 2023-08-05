@@ -162,6 +162,32 @@ impl BuddyAllocator {
             return Some(unsafe { self.heap_start.add(relative ^ size) });
         }
     }
+
+    pub fn get_total_mem(&self) -> usize {
+        return self.heap_size;
+    }
+
+    pub fn get_free_mem(&self) -> usize {
+        let mut free_memory = 0;
+        for order in 0..unsafe { (*self.free_lists.get()).len() } {
+            let block_size = self.order_size(order);
+            let num_blocks = unsafe {
+                let mut count = 0;
+                let mut block_ptr = (*self.free_lists.get())[order];
+                while !block_ptr.is_null() {
+                    count += 1;
+                    block_ptr = (*block_ptr).next;
+                }
+                count
+            };
+            free_memory += block_size * num_blocks;
+        }
+        return free_memory;
+    }
+
+		pub fn get_used_mem(&self) -> usize {
+			return self.get_total_mem() - self.get_free_mem();
+		}
 }
 
 unsafe impl GlobalAlloc for BuddyAllocator {
