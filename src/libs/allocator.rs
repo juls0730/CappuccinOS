@@ -185,9 +185,9 @@ impl BuddyAllocator {
         return free_memory;
     }
 
-		pub fn get_used_mem(&self) -> usize {
-			return self.get_total_mem() - self.get_free_mem();
-		}
+    pub fn get_used_mem(&self) -> usize {
+        return self.get_total_mem() - self.get_free_mem();
+    }
 }
 
 unsafe impl GlobalAlloc for BuddyAllocator {

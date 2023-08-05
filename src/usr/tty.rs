@@ -241,10 +241,15 @@ pub fn exec(command: &str) {
 
     if command == "memstat" {
         let allocator = &crate::libs::allocator::ALLOCATOR;
-        println!(
-            "Allocated so far: {}\nFree memory: {}",
+        let (used_mem, free_mem, total_mem) = (
             allocator.get_used_mem(),
-            allocator.get_free_mem()
+            allocator.get_free_mem(),
+            allocator.get_total_mem(),
+        );
+
+        println!(
+            "Allocated so far: {} bytes\nFree memory: {} bytes\nTotal Memory: {} bytes",
+            used_mem, free_mem, total_mem
         );
         return;
     }
@@ -307,12 +312,12 @@ fn parse_input(input: &str) -> (String, Vec<String>) {
                 while let Some(ch) = iter.peek() {
                     match ch {
                         &' ' | &'"' | &'\'' => break,
-												&'\\' => {
-													iter.next();
-													if let Some(next_char) = iter.next() {
-														arg.push(parse_escaped_char(next_char));
-													}
-												}
+                        &'\\' => {
+                            iter.next();
+                            if let Some(next_char) = iter.next() {
+                                arg.push(parse_escaped_char(next_char));
+                            }
+                        }
                         _ => arg.push(iter.next().unwrap()),
                     }
                 }
