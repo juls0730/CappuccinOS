@@ -1393,7 +1393,28 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
                 mod_key: true,
                 printable: false,
                 pressed: false,
-                name: "Esc"
+                name: "Esc",
+            });
+        }
+        0x9D => {
+            unsafe {
+                MOD_STATUSES.ctrl = false;
+            }
+
+            if unsafe { EXTENDED_KEY } == true {
+                return Some(Key {
+                    mod_key: false,
+                    printable: false,
+                    pressed: false,
+                    name: "RCtrl",
+                });
+            }
+
+            return Some(Key {
+                mod_key: true,
+                printable: false,
+                pressed: false,
+                name: "LCtrl",
             });
         }
         0xAA => {

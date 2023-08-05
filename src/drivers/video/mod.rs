@@ -39,11 +39,7 @@ pub fn put_char(character: char, cx: u16, cy: u16, fg: u32, bg: u32) {
             let x = (cx * 8 + col) as u32;
             let y = (cy * 16 + row as u16) as u32;
 
-            if pixel == 1 {
-                put_pixel(x, y, fg);
-            } else {
-                put_pixel(x, y, bg);
-            }
+            put_pixel(x, y, if pixel == 1 { fg } else { bg });
         }
     }
 }
@@ -58,9 +54,9 @@ pub fn put_pixel(x: u32, y: u32, color: u32) {
 
         unsafe {
             // let pixel_offset: *mut u32 = (y * (*g_vbe).pitch as u32 + (x * ((*g_vbe).bpp/8) as u32) + (*g_vbe).framebuffer) as *mut u32;
-            *(framebuffer.address.as_ptr().unwrap().offset(
-                (y * framebuffer.pitch as u32 + (x * (framebuffer.bpp / 8) as u32)) as isize,
-            ) as *mut u32) = color;
+            let pixel_offset =
+                (y * framebuffer.pitch as u32 + (x * (framebuffer.bpp / 8) as u32)) as isize;
+            *(framebuffer.address.as_ptr().unwrap().offset(pixel_offset) as *mut u32) = color;
         }
     }
 }

@@ -1,4 +1,6 @@
 #![feature(abi_x86_interrupt)]
+#![feature(const_unsafecell_get_mut)]
+#![feature(const_mut_refs)]
 #![no_std]
 #![no_main]
 

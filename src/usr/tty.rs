@@ -38,7 +38,7 @@ impl Cursor {
             let framebuffer = &framebuffer_response.framebuffers()[0];
 
             if self.cx == 0 {
-                self.cx = (framebuffer.width / 8) as u16 - 2;
+                self.cx = (framebuffer.width / 8) as u16 - 1;
                 self.cy -= 1;
             } else {
                 self.cx -= 1;
@@ -240,12 +240,13 @@ pub fn exec(command: &str) {
     }
 
     if command == "memstat" {
-        let allocator = &crate::libs::allocator::ALLOCATOR;
-        println!(
-            "Allocated so far: {}\nFree memory: {}",
-            allocator.get_used(),
-            allocator.get_free()
-        );
+        // let allocator = &crate::libs::allocator::ALLOCATOR;
+        // println!(
+        //     "Allocated so far: {}\nFree memory: {}",
+        //     allocator.get_used(),
+        //     allocator.get_free()
+        // );
+				println!("Unknown....");
         return;
     }
 
@@ -280,15 +281,7 @@ fn parse_input(input: &str) -> (String, Vec<String>) {
                     match ch {
                         '\\' => {
                             if let Some(next_char) = iter.next() {
-                                let escaped = match next_char {
-                                    'n' => '\n',
-                                    't' => '\t',
-                                    '\\' => '\\',
-                                    '\'' => '\'',
-                                    '"' => '"',
-                                    _ => next_char, // You can add more escape sequences if needed
-                                };
-                                arg.push(escaped);
+                                arg.push(parse_escaped_char(next_char));
                             }
                         }
                         '"' | '\'' => {
@@ -315,6 +308,12 @@ fn parse_input(input: &str) -> (String, Vec<String>) {
                 while let Some(ch) = iter.peek() {
                     match ch {
                         &' ' | &'"' | &'\'' => break,
+												&'\\' => {
+													iter.next();
+													if let Some(next_char) = iter.next() {
+														arg.push(parse_escaped_char(next_char));
+													}
+												}
                         _ => arg.push(iter.next().unwrap()),
                     }
                 }
@@ -330,4 +329,16 @@ fn parse_input(input: &str) -> (String, Vec<String>) {
     }
 
     return (command, args);
+}
+
+fn parse_escaped_char(next_char: char) -> char {
+    let escaped = match next_char {
+        'n' => '\n',
+        't' => '\t',
+        '\\' => '\\',
+        '\'' => '\'',
+        '"' => '"',
+        _ => next_char, // You can add more escape sequences if needed
+    };
+    return escaped;
 }
