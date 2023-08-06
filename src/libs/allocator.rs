@@ -6,8 +6,7 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::UnsafeCell;
 use core::cmp::{max, min};
-use core::mem::size_of;
-use core::ptr::{self, NonNull};
+use core::ptr;
 
 const fn log2(num: usize) -> u8 {
     let mut temp = num;
@@ -24,11 +23,11 @@ const fn log2(num: usize) -> u8 {
 }
 
 const MIN_HEAP_ALIGN: usize = 4096;
-const HEAP_START: usize = 0x00FF_0000;
-const HEAP_SIZE: usize = 0x0008_0000;
-const HEAP_BLOCKS: usize = 16;
+const HEAP_START: usize = 0x0010_0000; // 1 MiB
+const HEAP_SIZE: usize = 0x0008_0000; // 0.5 MiB
+const HEAP_BLOCKS: usize = 16; // 256 KiB per block
 
-struct FreeBlock {
+pub struct FreeBlock {
     next: *mut FreeBlock,
 }
 
@@ -168,25 +167,13 @@ impl BuddyAllocator {
     }
 
     pub fn get_free_mem(&self) -> usize {
-        let mut free_memory = 0;
-        for order in 0..unsafe { (*self.free_lists.get()).len() } {
-            let block_size = self.order_size(order);
-            let num_blocks = unsafe {
-                let mut count = 0;
-                let mut block_ptr = (*self.free_lists.get())[order];
-                while !block_ptr.is_null() {
-                    count += 1;
-                    block_ptr = (*block_ptr).next;
-                }
-                count
-            };
-            free_memory += block_size * num_blocks;
-        }
-        return free_memory;
+        // Todo :/
+        return 0;
     }
 
     pub fn get_used_mem(&self) -> usize {
-        return self.get_total_mem() - self.get_free_mem();
+        // Todo :/
+        return 0;
     }
 }
 

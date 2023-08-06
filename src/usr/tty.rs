@@ -1,5 +1,7 @@
+use core::alloc::GlobalAlloc;
+
 use crate::{print, println};
-use alloc::{borrow::ToOwned, format, str, string::String, vec::Vec};
+use alloc::{alloc::alloc, format, str, string::String, vec::Vec};
 
 pub struct Cursor {
     cx: u16,
@@ -241,16 +243,54 @@ pub fn exec(command: &str) {
 
     if command == "memstat" {
         let allocator = &crate::libs::allocator::ALLOCATOR;
-        let (used_mem, free_mem, total_mem) = (
-            allocator.get_used_mem(),
-            allocator.get_free_mem(),
-            allocator.get_total_mem(),
+        let mut unit = "bits";
+        let (mut used_mem, mut free_mem, mut total_mem) = (
+            allocator.get_used_mem() as f32,
+            allocator.get_free_mem() as f32,
+            allocator.get_total_mem() as f32,
         );
 
+        if args.len() > 0 {
+            match args[0].as_str() {
+                "mib" => {
+                    let bytes_in_mib = (1024 * 1024) as f32;
+                    used_mem = used_mem / bytes_in_mib;
+                    free_mem = free_mem / bytes_in_mib;
+                    total_mem = total_mem / bytes_in_mib;
+                    unit = "MiB";
+                }
+                _ => {}
+            }
+        }
+
         println!(
-            "Allocated so far: {} bytes\nFree memory: {} bytes\nTotal Memory: {} bytes",
-            used_mem, free_mem, total_mem
+            "Allocated so far: {} {unit}\nFree memory: {} {unit}\nTotal Memory: {} {unit}",
+            used_mem,
+            free_mem,
+            total_mem,
+            unit = unit
         );
+        return;
+    }
+
+    if command == "memalloc" {
+        if args.len() == 0 {
+            println!("Size of allocation is required.");
+            return;
+        }
+
+        let size = args[0]
+            .as_str()
+            .parse();
+
+        if size.is_err() {
+            println!("Argument provided is not a number.");
+            return;
+        }
+
+        let mem = unsafe { alloc(core::alloc::Layout::from_size_align(size.unwrap(), 16).unwrap()) };
+        unsafe { *(mem as *mut u16) = 42 };
+        puts(&format!("mem val: {}\n", unsafe { *(mem as *mut u16) }));
         return;
     }
 
