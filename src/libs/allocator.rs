@@ -40,7 +40,7 @@ impl FreeBlock {
 pub struct BuddyAllocator {
     heap_start: *mut u8,
     heap_size: usize,
-    free_lists: UnsafeCell<[*mut FreeBlock; HEAP_BLOCKS]>,
+    pub free_lists: UnsafeCell<[*mut FreeBlock; HEAP_BLOCKS]>,
     min_block_size: usize,
     min_block_size_log2: u8,
 }
@@ -167,13 +167,24 @@ impl BuddyAllocator {
     }
 
     pub fn get_free_mem(&self) -> usize {
-        // Todo :/
-        return 0;
+        let mut free_mem = 0;
+
+        unsafe {
+            for order in 0..(*self.free_lists.get()).len() {
+                let mut block = (*self.free_lists.get())[order];
+
+                while !block.is_null() {
+                    free_mem += self.order_size(order);
+                    block = (*block).next;
+                }
+            }
+        }
+
+        return free_mem;
     }
 
     pub fn get_used_mem(&self) -> usize {
-        // Todo :/
-        return 0;
+        return self.get_total_mem() - self.get_free_mem();
     }
 }
 

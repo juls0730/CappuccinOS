@@ -1,7 +1,4 @@
-use core::alloc::GlobalAlloc;
-
-use crate::{print, println};
-use alloc::{alloc::alloc, format, str, string::String, vec::Vec};
+use alloc::{alloc::{alloc, dealloc}, format, str, string::String, vec::Vec};
 
 pub struct Cursor {
     cx: u16,
@@ -279,30 +276,55 @@ pub fn exec(command: &str) {
             return;
         }
 
-        let size = args[0]
-            .as_str()
-            .parse();
+        let size = args[0].as_str().parse();
 
         if size.is_err() {
             println!("Argument provided is not a number.");
             return;
         }
 
-        let mem = unsafe { alloc(core::alloc::Layout::from_size_align(size.unwrap(), 16).unwrap()) };
+        let layout = core::alloc::Layout::from_size_align(size.unwrap(), 16).unwrap();
+
+        let mem = unsafe {
+            alloc(layout) as *mut u16
+        };
         unsafe { *(mem as *mut u16) = 42 };
-        puts(&format!("mem val: {}\n", unsafe { *(mem as *mut u16) }));
+        println!("{:p} val: {}", mem, unsafe { *(mem) });
         return;
     }
 
-    print!("{} ", command);
-    print!("[");
-    for (i, arg) in args.iter().enumerate() {
-        print!("{}", arg);
-        if i != args.len() - 1 {
-            print!(", ");
+    if command == "memtest" {
+        if args.len() == 0 {
+            println!("Memory address to test is required.");
+            return;
         }
+
+        fn parse_memory_address(input: &str) -> Option<u64> {
+            if input.starts_with("0x") {
+                u64::from_str_radix(&input[2..], 16).ok()
+            } else {
+                None
+            }
+        }
+
+        let arg = args[0].as_str();
+
+        if let Some(addr) = parse_memory_address(arg) {
+            let ptr: *const u32 = addr as *const u32;
+
+            unsafe {
+                let val = *ptr;
+
+                println!("Value at memory address: {}", val);
+            }
+        } else {
+            println!("Argument provided is not a memory address.");
+        }
+
+        return;
     }
-    println!("]");
+
+    println!("{} {:?}", command, args);
 }
 
 fn parse_input(input: &str) -> (String, Vec<String>) {
@@ -312,6 +334,8 @@ fn parse_input(input: &str) -> (String, Vec<String>) {
 
     let mut i: usize = 0;
     while let Some(char) = iter.next() {
+        let mut arg = String::new();
+
         match char {
             ' ' => continue,
             '"' | '\'' => {
@@ -319,7 +343,6 @@ fn parse_input(input: &str) -> (String, Vec<String>) {
                 if char == '\'' {
                     escape_char = '\'';
                 }
-                let mut arg = String::new();
 
                 while let Some(ch) = iter.next() {
                     match ch {
@@ -346,8 +369,13 @@ fn parse_input(input: &str) -> (String, Vec<String>) {
                 }
             }
             _ => {
-                let mut arg = String::new();
-                arg.push(char);
+                if char == '\\' {
+                    if let Some(ch) = iter.next() {
+                        arg.push(parse_escaped_char(ch));
+                    }
+                } else {
+                    arg.push(char);
+                }
 
                 while let Some(ch) = iter.peek() {
                     match ch {
@@ -379,9 +407,6 @@ fn parse_escaped_char(next_char: char) -> char {
     let escaped = match next_char {
         'n' => '\n',
         't' => '\t',
-        '\\' => '\\',
-        '\'' => '\'',
-        '"' => '"',
         _ => next_char, // You can add more escape sequences if needed
     };
     return escaped;
