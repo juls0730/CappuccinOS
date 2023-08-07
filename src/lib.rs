@@ -1,7 +1,6 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
-#![feature(const_unsafecell_get_mut)]
-#![feature(const_mut_refs)]
+#![feature(generic_arg_infer)]
 
 extern crate alloc;
 

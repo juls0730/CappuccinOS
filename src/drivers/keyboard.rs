@@ -802,6 +802,15 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             }
         }
         0x2E => {
+            if unsafe { MOD_STATUSES.ctrl } == true {
+                return Some(Key {
+                    mod_key: false,
+                    printable: false,
+                    pressed: true,
+                    name: "\u{0003}",
+                });
+            }
+
             if unsafe { MOD_STATUSES.shift ^ MOD_STATUSES.caps } == false {
                 return Some(Key {
                     mod_key: false,

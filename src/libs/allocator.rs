@@ -50,10 +50,11 @@ unsafe impl Sync for BuddyAllocator {}
 impl BuddyAllocator {
     pub const fn new_unchecked(heap_start: *mut u8, heap_size: usize) -> Self {
         let min_block_size = heap_size >> (HEAP_BLOCKS - 1);
-        let mut free_lists: UnsafeCell<[*mut FreeBlock; HEAP_BLOCKS]> =
-            UnsafeCell::new([ptr::null_mut(); HEAP_BLOCKS]);
+        let mut free_lists_buf: [*mut FreeBlock; HEAP_BLOCKS] = [ptr::null_mut(); HEAP_BLOCKS];
 
-        (*free_lists.get_mut())[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
+        free_lists_buf[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
+
+        let free_lists: UnsafeCell<[*mut FreeBlock; 16]> = UnsafeCell::new(free_lists_buf);
 
         Self {
             heap_start,
@@ -190,24 +191,19 @@ impl BuddyAllocator {
 
 unsafe impl GlobalAlloc for BuddyAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        match self.allocation_order(layout.size(), layout.align()) {
-            Some(order_needed) => {
-                for order in order_needed..unsafe { (*self.free_lists.get()).len() } {
-                    if let Some(block) = self.free_list_pop(order) {
-                        if order > order_needed {
-                            unsafe { self.split_free_block(block, order, order_needed) };
-                        }
-
-                        return block;
+        if let Some(order_needed) = self.allocation_order(layout.size(), layout.align()) {
+            for order in order_needed..unsafe { (*self.free_lists.get()).len() } {
+                if let Some(block) = self.free_list_pop(order) {
+                    if order > order_needed {
+                        unsafe { self.split_free_block(block, order, order_needed) };
                     }
-                }
 
-                return ptr::null_mut();
-            }
-            None => {
-                return ptr::null_mut();
+                    return block;
+                }
             }
         }
+
+        return ptr::null_mut();
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

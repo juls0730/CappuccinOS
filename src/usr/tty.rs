@@ -1,4 +1,13 @@
-use alloc::{alloc::{alloc, dealloc}, format, str, string::String, vec::Vec};
+use core::arch::asm;
+
+use alloc::{
+    alloc::{alloc, dealloc},
+    format, str,
+    string::String,
+    vec::Vec,
+};
+
+use crate::libs::logging::log_error;
 
 pub struct Cursor {
     cx: u16,
@@ -50,6 +59,11 @@ impl Cursor {
     }
 
     pub fn set_bg(&mut self, new_bg: u32) {
+        self.bg = new_bg;
+    }
+
+    pub fn set_color(&mut self, new_fg: u32, new_bg: u32) {
+        self.fg = new_fg;
         self.bg = new_bg;
     }
 }
@@ -142,6 +156,10 @@ pub fn puts(string: &str) {
             }
         }
     }
+
+    unsafe {
+        CURSOR.set_color(0xbababa, 0x000000);
+    }
 }
 
 #[macro_export]
@@ -185,9 +203,16 @@ static mut INPUT_BUFFER: InputBuffer = InputBuffer { buffer: Vec::new() };
 pub fn handle_key(key: crate::drivers::keyboard::Key, mods: crate::drivers::keyboard::ModStatuses) {
     let input_buffer = unsafe { &mut INPUT_BUFFER };
 
-    if key.name == "Enter" || (mods.ctrl == true && key.name == "c") {
+    if key.name == "Enter" {
         puts("\n");
         exec(input_buffer.as_str());
+        input_buffer.clear();
+        super::shell::prompt();
+        return;
+    }
+
+    if key.name == "\u{0003}" {
+        puts("^C\n");
         input_buffer.clear();
         super::shell::prompt();
         return;
@@ -240,56 +265,58 @@ pub fn exec(command: &str) {
 
     if command == "memstat" {
         let allocator = &crate::libs::allocator::ALLOCATOR;
-        let mut unit = "bits";
-        let (mut used_mem, mut free_mem, mut total_mem) = (
-            allocator.get_used_mem() as f32,
-            allocator.get_free_mem() as f32,
-            allocator.get_total_mem() as f32,
-        );
-
-        if args.len() > 0 {
-            match args[0].as_str() {
-                "mib" => {
-                    let bytes_in_mib = (1024 * 1024) as f32;
-                    used_mem = used_mem / bytes_in_mib;
-                    free_mem = free_mem / bytes_in_mib;
-                    total_mem = total_mem / bytes_in_mib;
-                    unit = "MiB";
-                }
-                _ => {}
+        fn label_units(bytes: usize) -> (usize, &'static str) {
+            if bytes >> 30 > 0 {
+                return (bytes >> 30, "GiB");
+            } else if bytes >> 20 > 0 {
+                return (bytes >> 20, "MiB");
+            } else if bytes >> 10 > 0 {
+                return (bytes >> 10, "KiB");
+            } else {
+                return (bytes, "Bytes");
             }
         }
 
+				let (used_mem, used_mem_label) = label_units(allocator.get_used_mem());
+				let (free_mem, free_mem_label) = label_units(allocator.get_free_mem());
+				let (total_mem, total_mem_label) = label_units(allocator.get_total_mem());
+
         println!(
-            "Allocated so far: {} {unit}\nFree memory: {} {unit}\nTotal Memory: {} {unit}",
-            used_mem,
-            free_mem,
-            total_mem,
-            unit = unit
+            "Allocated so far: {used_mem} {used_mem_label}\nFree memory: {free_mem} {free_mem_label}\nTotal Memory: {total_mem} {total_mem_label}",
         );
         return;
     }
 
     if command == "memalloc" {
-        if args.len() == 0 {
-            println!("Size of allocation is required.");
-            return;
-        }
+        let layout = core::alloc::Layout::from_size_align(16, 16).unwrap();
 
-        let size = args[0].as_str().parse();
-
-        if size.is_err() {
-            println!("Argument provided is not a number.");
-            return;
-        }
-
-        let layout = core::alloc::Layout::from_size_align(size.unwrap(), 16).unwrap();
-
-        let mem = unsafe {
-            alloc(layout) as *mut u16
-        };
+        let mem = unsafe { alloc(layout) as *mut u16 };
         unsafe { *(mem as *mut u16) = 42 };
         println!("{:p} val: {}", mem, unsafe { *(mem) });
+        return;
+    }
+
+    if command == "memdealloc" {
+        if args.len() == 0 {
+            println!("Memory address to test is required.");
+            return;
+        }
+
+        let layout = core::alloc::Layout::from_size_align(16, 16).unwrap();
+        let arg = args[0].as_str();
+
+        if let Some(addr) = parse_memory_address(arg) {
+            let ptr = addr as *mut u8;
+
+            unsafe {
+                dealloc(ptr, layout);
+
+                println!("Deallocated memory at address: {:?}", ptr);
+            }
+        } else {
+            println!("Argument provided is not a memory address.");
+        }
+
         return;
     }
 
@@ -297,14 +324,6 @@ pub fn exec(command: &str) {
         if args.len() == 0 {
             println!("Memory address to test is required.");
             return;
-        }
-
-        fn parse_memory_address(input: &str) -> Option<u64> {
-            if input.starts_with("0x") {
-                u64::from_str_radix(&input[2..], 16).ok()
-            } else {
-                None
-            }
         }
 
         let arg = args[0].as_str();
@@ -321,6 +340,18 @@ pub fn exec(command: &str) {
             println!("Argument provided is not a memory address.");
         }
 
+        return;
+    }
+
+    if command == "echo" {
+        let mut input = "";
+
+        if args.len() != 0 {
+            input = args[0].as_str();
+        }
+
+        puts(input);
+        puts("\n");
         return;
     }
 
@@ -407,7 +438,16 @@ fn parse_escaped_char(next_char: char) -> char {
     let escaped = match next_char {
         'n' => '\n',
         't' => '\t',
+        '0' => '\0',
         _ => next_char, // You can add more escape sequences if needed
     };
     return escaped;
+}
+
+fn parse_memory_address(input: &str) -> Option<u64> {
+    if input.starts_with("0x") {
+        u64::from_str_radix(&input[2..], 16).ok()
+    } else {
+        None
+    }
 }
