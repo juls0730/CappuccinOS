@@ -1,6 +1,5 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
-#![feature(generic_arg_infer)]
 
 extern crate alloc;
 

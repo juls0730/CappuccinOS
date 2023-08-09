@@ -200,7 +200,7 @@ impl InputBuffer {
 
 static mut INPUT_BUFFER: InputBuffer = InputBuffer { buffer: Vec::new() };
 
-pub fn handle_key(key: crate::drivers::keyboard::Key, mods: crate::drivers::keyboard::ModStatuses) {
+pub fn handle_key(key: crate::drivers::keyboard::Key) {
     let input_buffer = unsafe { &mut INPUT_BUFFER };
 
     if key.name == "Enter" {
@@ -211,11 +211,13 @@ pub fn handle_key(key: crate::drivers::keyboard::Key, mods: crate::drivers::keyb
         return;
     }
 
-    if key.name == "\u{0003}" {
-        puts("^C\n");
-        input_buffer.clear();
-        super::shell::prompt();
-        return;
+    if key.character.is_some() {
+        if key.character.unwrap() == '\u{0003}' {
+            puts("^C\n");
+            input_buffer.clear();
+            super::shell::prompt();
+            return;
+        }
     }
 
     if key.name == "Backspace" && input_buffer.buffer.len() > 0 {
@@ -249,10 +251,10 @@ pub fn handle_key(key: crate::drivers::keyboard::Key, mods: crate::drivers::keyb
     }
 
     if key.printable {
-        let character = key.name.chars().next().unwrap_or('\0');
+        let character = key.character.unwrap();
         input_buffer.push(character as u8);
 
-        puts(key.name);
+        puts(&format!("{}", key.character.unwrap()));
     }
 }
 
@@ -277,9 +279,9 @@ pub fn exec(command: &str) {
             }
         }
 
-				let (used_mem, used_mem_label) = label_units(allocator.get_used_mem());
-				let (free_mem, free_mem_label) = label_units(allocator.get_free_mem());
-				let (total_mem, total_mem_label) = label_units(allocator.get_total_mem());
+        let (used_mem, used_mem_label) = label_units(allocator.get_used_mem());
+        let (free_mem, free_mem_label) = label_units(allocator.get_free_mem());
+        let (total_mem, total_mem_label) = label_units(allocator.get_total_mem());
 
         println!(
             "Allocated so far: {used_mem} {used_mem_label}\nFree memory: {free_mem} {free_mem_label}\nTotal Memory: {total_mem} {total_mem_label}",
@@ -355,7 +357,7 @@ pub fn exec(command: &str) {
         return;
     }
 
-    println!("{} {:?}", command, args);
+    println!("{:?} {:?}", command, args);
 }
 
 fn parse_input(input: &str) -> (String, Vec<String>) {

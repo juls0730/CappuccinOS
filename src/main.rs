@@ -1,5 +1,4 @@
 #![feature(abi_x86_interrupt)]
-#![feature(generic_arg_infer)]
 #![no_std]
 #![no_main]
 
