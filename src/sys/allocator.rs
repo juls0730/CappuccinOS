@@ -7,6 +7,8 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::cell::UnsafeCell;
 use core::cmp::{max, min};
 use core::ptr;
+use core::sync::atomic::Ordering::SeqCst;
+use core::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU8};
 
 const fn log2(num: usize) -> u8 {
     let mut temp = num;
@@ -23,9 +25,7 @@ const fn log2(num: usize) -> u8 {
 }
 
 const MIN_HEAP_ALIGN: usize = 4096;
-const HEAP_START: usize = 0x0010_0000; // 1 MiB
-const HEAP_SIZE: usize = 0x0008_0000; // 0.5 MiB
-const HEAP_BLOCKS: usize = 16; // 256 KiB per block
+const HEAP_BLOCKS: usize = 16;
 
 pub struct FreeBlock {
     next: *mut FreeBlock,
@@ -38,31 +38,53 @@ impl FreeBlock {
 }
 
 pub struct BuddyAllocator {
-    heap_start: *mut u8,
-    heap_size: usize,
+    heap_start: AtomicPtr<u8>,
+    heap_size: AtomicUsize,
     pub free_lists: UnsafeCell<[*mut FreeBlock; HEAP_BLOCKS]>,
-    min_block_size: usize,
-    min_block_size_log2: u8,
+    min_block_size: AtomicUsize,
+    min_block_size_log2: AtomicU8,
 }
 
 unsafe impl Sync for BuddyAllocator {}
 
 impl BuddyAllocator {
     pub const fn new_unchecked(heap_start: *mut u8, heap_size: usize) -> Self {
-        let min_block_size = heap_size >> (HEAP_BLOCKS - 1);
+				let min_block_size_raw = heap_size >> (HEAP_BLOCKS - 1);
+        let min_block_size = AtomicUsize::new(min_block_size_raw);
         let mut free_lists_buf: [*mut FreeBlock; HEAP_BLOCKS] = [ptr::null_mut(); HEAP_BLOCKS];
 
         free_lists_buf[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
 
         let free_lists: UnsafeCell<[*mut FreeBlock; 16]> = UnsafeCell::new(free_lists_buf);
 
+        let heap_start = AtomicPtr::new(heap_start as *mut u8);
+        let heap_size = AtomicUsize::new(heap_size);
+
         Self {
             heap_start,
             heap_size,
             free_lists,
             min_block_size,
-            min_block_size_log2: log2(min_block_size),
+            min_block_size_log2: AtomicU8::new(log2(min_block_size_raw)),
         }
+    }
+
+    pub fn set_heap(&self, heap_start: *mut u8, heap_size: usize) {
+				// Reconstruct heap to account for new heap space.
+				let min_block_size = heap_size >> (HEAP_BLOCKS - 1);
+
+				self.min_block_size.swap(min_block_size, SeqCst);
+				self.min_block_size_log2.swap(log2(min_block_size), SeqCst);
+
+        let mut free_lists_buf: [*mut FreeBlock; HEAP_BLOCKS] = [ptr::null_mut(); HEAP_BLOCKS];
+
+        free_lists_buf[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
+
+        let free_lists: UnsafeCell<[*mut FreeBlock; 16]> = UnsafeCell::new(free_lists_buf);
+
+				unsafe { (*self.free_lists.get()) = *free_lists.get() }
+        self.heap_start.swap(heap_start, SeqCst);
+        self.heap_size.swap(heap_size, SeqCst);
     }
 
     fn allocation_size(&self, mut size: usize, align: usize) -> Option<usize> {
@@ -78,11 +100,11 @@ impl BuddyAllocator {
             size = align;
         }
 
-        size = max(size, self.min_block_size);
+        size = max(size, self.min_block_size.load(SeqCst));
 
         size = size.next_power_of_two();
 
-        if size > self.heap_size {
+        if size > self.heap_size.load(SeqCst) {
             return None;
         }
 
@@ -92,11 +114,11 @@ impl BuddyAllocator {
     fn allocation_order(&self, size: usize, align: usize) -> Option<usize> {
         return self
             .allocation_size(size, align)
-            .map(|s| (log2(s) - self.min_block_size_log2) as usize);
+            .map(|s| (log2(s) - self.min_block_size_log2.load(SeqCst)) as usize);
     }
 
-    const fn order_size(&self, order: usize) -> usize {
-        return 1 << (self.min_block_size_log2 as usize + order);
+    fn order_size(&self, order: usize) -> usize {
+        return 1 << (self.min_block_size_log2.load(SeqCst) as usize + order);
     }
 
     fn free_list_pop(&self, order: usize) -> Option<*mut u8> {
@@ -152,19 +174,19 @@ impl BuddyAllocator {
     }
 
     fn buddy(&self, order: usize, block: *mut u8) -> Option<*mut u8> {
-        assert!(block >= self.heap_start);
+        assert!(block >= self.heap_start.load(SeqCst));
 
-        let relative = unsafe { block.offset_from(self.heap_start) } as usize;
+        let relative = unsafe { block.offset_from(self.heap_start.load(SeqCst)) } as usize;
         let size = self.order_size(order);
-        if size >= self.heap_size {
+        if size >= self.heap_size.load(SeqCst) {
             return None;
         } else {
-            return Some(unsafe { self.heap_start.add(relative ^ size) });
+            return Some(unsafe { self.heap_start.load(SeqCst).add(relative ^ size) });
         }
     }
 
     pub fn get_total_mem(&self) -> usize {
-        return self.heap_size;
+        return self.heap_size.load(SeqCst);
     }
 
     pub fn get_free_mem(&self) -> usize {
@@ -225,7 +247,3 @@ unsafe impl GlobalAlloc for BuddyAllocator {
         }
     }
 }
-
-#[global_allocator]
-pub static ALLOCATOR: BuddyAllocator =
-    BuddyAllocator::new_unchecked(HEAP_START as *mut u8, HEAP_SIZE);

@@ -2,6 +2,8 @@
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use alloc::format;
+
 use crate::{arch::interrupts, libs::io::inb};
 
 #[derive(Clone, Copy)]
@@ -36,6 +38,11 @@ pub fn init_keyboard(function_ptr: fn(key: Key)) {
         0x28,
         0xEE,
     );
+
+    unsafe {
+        interrupts::PICS.notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
+    }
+
     crate::libs::logging::log_ok("Keyboard initialized");
 }
 

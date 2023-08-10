@@ -11,7 +11,6 @@ pub static PORT: u16 = 0x3f8;
 // PORT + 2: Interrupt identification and FIFO control registers.
 // PORT + 3: Line control register, this sets DLAB to the most significant bit.
 // PORT + 4: Modem control register
-
 pub fn init_serial() -> u8 {
     outb(PORT + 1, 0x00);
     outb(PORT + 3, 0x80);

@@ -6,16 +6,19 @@ extern crate alloc;
 
 mod api;
 
+mod arch;
 mod drivers;
 mod libs;
 mod usr;
-mod arch;
+mod sys;
 
 use alloc::format;
 use drivers::serial;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+		sys::mem::init();
+
     serial::init_serial();
 
     arch::interrupts::init();

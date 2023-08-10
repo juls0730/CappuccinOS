@@ -9,5 +9,6 @@ pub mod api;
 pub mod drivers;
 pub mod libs;
 pub mod usr;
+pub mod sys;
 
 pub mod arch;

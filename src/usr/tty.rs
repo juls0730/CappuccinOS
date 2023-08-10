@@ -1,13 +1,9 @@
-use core::arch::asm;
-
 use alloc::{
     alloc::{alloc, dealloc},
     format, str,
     string::String,
     vec::Vec,
 };
-
-use crate::libs::logging::log_error;
 
 pub struct Cursor {
     cx: u16,
@@ -266,18 +262,7 @@ pub fn exec(command: &str) {
     }
 
     if command == "memstat" {
-        let allocator = &crate::libs::allocator::ALLOCATOR;
-        fn label_units(bytes: usize) -> (usize, &'static str) {
-            if bytes >> 30 > 0 {
-                return (bytes >> 30, "GiB");
-            } else if bytes >> 20 > 0 {
-                return (bytes >> 20, "MiB");
-            } else if bytes >> 10 > 0 {
-                return (bytes >> 10, "KiB");
-            } else {
-                return (bytes, "Bytes");
-            }
-        }
+        let allocator = &crate::sys::mem::ALLOCATOR;
 
         let (used_mem, used_mem_label) = label_units(allocator.get_used_mem());
         let (free_mem, free_mem_label) = label_units(allocator.get_free_mem());
@@ -290,35 +275,74 @@ pub fn exec(command: &str) {
     }
 
     if command == "memalloc" {
-        let layout = core::alloc::Layout::from_size_align(16, 16).unwrap();
-
-        let mem = unsafe { alloc(layout) as *mut u16 };
-        unsafe { *(mem as *mut u16) = 42 };
-        println!("{:p} val: {}", mem, unsafe { *(mem) });
-        return;
-    }
-
-    if command == "memdealloc" {
         if args.len() == 0 {
-            println!("Memory address to test is required.");
+            println!("Allocation size is required. See --help for detailed instructions.");
             return;
         }
 
-        let layout = core::alloc::Layout::from_size_align(16, 16).unwrap();
-        let arg = args[0].as_str();
+        if args[0].as_str() == "--help" || args[0].as_str() == "-h" {
+            // print help menu
+            println!("memalloc ALLOCATION_SIZE [OPTIONS]\n-d alias: --dealloc; Deallocates memory at the specified location with specified size.");
+            return;
+        }
 
-        if let Some(addr) = parse_memory_address(arg) {
-            let ptr = addr as *mut u8;
+        if args.len() == 1 {
+            // allocate
+            let size: Result<usize, core::num::ParseIntError> = args[0].as_str().parse();
+
+            if size.is_err() {
+                println!(
+                    "Provided argument is not a number. See --help for detailed instructions."
+                );
+                return;
+            }
+
+            let layout = core::alloc::Layout::from_size_align(size.unwrap(), 16).unwrap();
+
+            let mem = unsafe { alloc(layout) as *mut u16 };
+            unsafe { *(mem as *mut u16) = 42 };
+            println!("{:p} val: {}", mem, unsafe { *(mem) });
+        } else {
+            // deallocate
+            if args.len() < 3 {
+                println!("Malformed input. See --help for detailed instructions.");
+            }
+
+            let mut memory_address = 0;
+            let mut size = 0;
+
+            for arg in args {
+                if arg.starts_with("-") {
+                    continue;
+                }
+
+                if arg.starts_with("0x") {
+                    memory_address = parse_memory_address(arg.as_str()).unwrap();
+										continue;
+                }
+
+                let num_arg = arg.parse::<usize>();
+
+                if num_arg.is_err() {
+                    println!(
+                        "Provided argument is not a number. See --help for detailed instructions."
+                    );
+                    return;
+                }
+
+                size = num_arg.unwrap();
+            }
+
+            let layout = core::alloc::Layout::from_size_align(size, 16).unwrap();
+
+            let ptr = memory_address as *mut u8;
 
             unsafe {
                 dealloc(ptr, layout);
 
                 println!("Deallocated memory at address: {:?}", ptr);
             }
-        } else {
-            println!("Argument provided is not a memory address.");
         }
-
         return;
     }
 
@@ -345,6 +369,11 @@ pub fn exec(command: &str) {
         return;
     }
 
+		if command == "memmap" {
+			crate::sys::mem::memory_map_info();
+			return;
+		}
+
     if command == "echo" {
         let mut input = "";
 
@@ -355,6 +384,31 @@ pub fn exec(command: &str) {
         puts(input);
         puts("\n");
         return;
+    }
+
+    if command == "poke" {
+        if args.len() < 2 {
+            println!("poke: usage error: memory address & value required!");
+            return;
+        }
+
+        if let Some(addr) = parse_memory_address(args[0].as_str()) {
+            let value: Result<u32, core::num::ParseIntError> = args[1].as_str().parse();
+
+            if value.is_err() {
+                println!("Second argument provided is not a number.");
+            }
+
+            let ptr: *mut u32 = addr as *mut u32;
+
+            unsafe {
+                *ptr = value.unwrap();
+
+                println!("Allocated {:?} at {:#x}", *ptr, addr);
+            }
+        } else {
+            println!("First argument provided is not a memory address.");
+        }
     }
 
     println!("{:?} {:?}", command, args);
@@ -451,5 +505,17 @@ fn parse_memory_address(input: &str) -> Option<u64> {
         u64::from_str_radix(&input[2..], 16).ok()
     } else {
         None
+    }
+}
+
+fn label_units(bytes: usize) -> (usize, &'static str) {
+    if bytes >> 30 > 0 {
+        return (bytes >> 30, "GiB");
+    } else if bytes >> 20 > 0 {
+        return (bytes >> 20, "MiB");
+    } else if bytes >> 10 > 0 {
+        return (bytes >> 10, "KiB");
+    } else {
+        return (bytes, "Bytes");
     }
 }
