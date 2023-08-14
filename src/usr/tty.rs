@@ -6,6 +6,7 @@ use alloc::{
     string::String,
     vec::Vec,
 };
+use limine::{Framebuffer, NonNullPtr};
 
 pub struct Cursor {
     cx: AtomicU16,
@@ -114,10 +115,10 @@ pub fn puts(string: &str) {
 
                 for code in codes {
                     match code {
-                        30..=37 => unsafe { CURSOR.set_fg(color_to_hex(code - 30)) },
-                        40..=47 => unsafe { CURSOR.set_bg(color_to_hex(code - 40)) },
-                        90..=97 => unsafe { CURSOR.set_fg(color_to_hex(code - 30)) },
-                        100..=107 => unsafe { CURSOR.set_bg(color_to_hex(code - 40)) },
+                        30..=37 => CURSOR.set_fg(color_to_hex(code - 30)),
+                        40..=47 => CURSOR.set_bg(color_to_hex(code - 40)),
+                        90..=97 => CURSOR.set_fg(color_to_hex(code - 30)),
+                        100..=107 => CURSOR.set_bg(color_to_hex(code - 40)),
                         _ => {}
                     }
                 }
@@ -154,17 +155,7 @@ pub fn puts(string: &str) {
                 // ! TODO: This copies excess data into the video buffer and thus,
                 // leads to noise on my machine.
                 if (CURSOR.cy.load(Ordering::SeqCst) + 1) >= (framebuffer.height / 16) as u16 {
-                    let copy_from =
-                        ((framebuffer.bpp as u64 * (framebuffer.width / 8)) * 16) as usize;
-                    let size = (framebuffer.pitch * framebuffer.width) as usize;
-
-                    unsafe {
-                        core::ptr::copy(
-                            framebuffer.address.as_ptr().unwrap().add(copy_from),
-                            framebuffer.address.as_ptr().unwrap(),
-                            size,
-                        );
-                    }
+                    scroll_console(framebuffer);
 
                     CURSOR.set_pos(0, CURSOR.cy.load(Ordering::SeqCst));
                 } else {
@@ -184,6 +175,19 @@ pub fn puts(string: &str) {
     }
 
     CURSOR.set_color(0xbababa, 0x000000);
+}
+
+pub fn scroll_console(framebuffer: &NonNullPtr<Framebuffer>) {
+		let size = framebuffer.pitch * framebuffer.height;
+    let copy_from = ((size as f64 / framebuffer.height as f64) * 16.0) as usize;
+
+    unsafe {
+        core::ptr::copy(
+            framebuffer.address.as_ptr().unwrap().add(copy_from),
+            framebuffer.address.as_ptr().unwrap(),
+            (size * (framebuffer.bpp / 8) as u64) as usize,
+        );
+    }
 }
 
 pub fn clear_screen() {
@@ -454,6 +458,18 @@ pub fn exec(command: &str) {
     if command == "clear" {
         clear_screen();
         return;
+    }
+
+    if command == "test" {
+        if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+            .get_response()
+            .get()
+        {
+            let framebuffer = &framebuffer_response.framebuffers()[0];
+
+            println!("{:?}", framebuffer);
+            return;
+        }
     }
 
     println!("{:?} {:?}", command, args);
