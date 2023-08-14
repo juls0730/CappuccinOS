@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicU16, AtomicU32, Ordering};
+
 use alloc::{
     alloc::{alloc, dealloc},
     format, str,
@@ -6,69 +8,70 @@ use alloc::{
 };
 
 pub struct Cursor {
-    cx: u16,
-    cy: u16,
-    fg: u32,
-    bg: u32,
+    cx: AtomicU16,
+    cy: AtomicU16,
+    fg: AtomicU32,
+    bg: AtomicU32,
 }
 
 impl Cursor {
-    fn set_pos(&mut self, new_cx: u16, new_cy: u16) {
-        self.cx = new_cx;
-        self.cy = new_cy;
+    fn set_pos(&self, new_cx: u16, new_cy: u16) {
+        self.cx.swap(new_cx, Ordering::SeqCst);
+        self.cy.swap(new_cy, Ordering::SeqCst);
     }
 
-    fn move_right(&mut self) {
+    fn move_right(&self) {
         if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
             .get_response()
             .get()
         {
             let framebuffer = &framebuffer_response.framebuffers()[0];
 
-            if self.cx == (framebuffer.width / 8) as u16 - 1 {
-                self.cy += 1;
-                self.cx = 0;
+            if self.cx.load(Ordering::SeqCst) == (framebuffer.width / 8) as u16 - 1 {
+                self.cy.fetch_add(1, Ordering::SeqCst);
+                self.cx.swap(0, Ordering::SeqCst);
             } else {
-                self.cx += 1;
+                self.cx.fetch_add(1, Ordering::SeqCst);
             }
         }
     }
 
-    fn move_left(&mut self) {
+    fn move_left(&self) {
         if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
             .get_response()
             .get()
         {
             let framebuffer = &framebuffer_response.framebuffers()[0];
 
-            if self.cx == 0 {
-                self.cx = (framebuffer.width / 8) as u16 - 1;
-                self.cy -= 1;
+            if self.cx.load(Ordering::SeqCst) == 0 {
+                self.cx
+                    .swap((framebuffer.width / 8) as u16 - 1, Ordering::SeqCst);
+                self.cy.fetch_sub(1, Ordering::SeqCst);
             } else {
-                self.cx -= 1;
+                self.cx.fetch_sub(1, Ordering::SeqCst);
             }
         }
     }
 
-    pub fn set_fg(&mut self, new_fg: u32) {
-        self.fg = new_fg;
+    pub fn set_fg(&self, new_fg: u32) {
+        self.fg.swap(new_fg, Ordering::SeqCst);
     }
 
-    pub fn set_bg(&mut self, new_bg: u32) {
-        self.bg = new_bg;
+    pub fn set_bg(&self, new_bg: u32) {
+        self.bg.swap(new_bg, Ordering::SeqCst);
     }
 
-    pub fn set_color(&mut self, new_fg: u32, new_bg: u32) {
-        self.fg = new_fg;
-        self.bg = new_bg;
+    pub fn set_color(&self, new_fg: u32, new_bg: u32) {
+        self.fg.swap(new_fg, Ordering::SeqCst);
+        self.bg.swap(new_bg, Ordering::SeqCst);
     }
 }
 
-pub static mut CURSOR: Cursor = Cursor {
-    cx: 0,
-    cy: 0,
-    fg: 0xbababa,
-    bg: 0x000000,
+pub static CURSOR: Cursor = Cursor {
+    cx: AtomicU16::new(0),
+    cy: AtomicU16::new(0),
+    fg: AtomicU32::new(0xbababa),
+    bg: AtomicU32::new(0x000000),
 };
 
 fn color_to_hex(color: u8) -> u32 {
@@ -141,32 +144,63 @@ pub fn puts(string: &str) {
             continue;
         }
 
-        unsafe {
-            if character == '\n' {
-                CURSOR.set_pos(0, CURSOR.cy + 1);
-            } else {
-                crate::drivers::video::put_char(
-                    character, CURSOR.cx, CURSOR.cy, CURSOR.fg, CURSOR.bg,
-                );
-                CURSOR.move_right();
+        if character == '\n' {
+            if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+                .get_response()
+                .get()
+            {
+                let framebuffer = &framebuffer_response.framebuffers()[0];
+
+                // ! TODO: This copies excess data into the video buffer and thus,
+                // leads to noise on my machine.
+                if (CURSOR.cy.load(Ordering::SeqCst) + 1) >= (framebuffer.height / 16) as u16 {
+                    let copy_from =
+                        ((framebuffer.bpp as u64 * (framebuffer.width / 8)) * 16) as usize;
+                    let size = (framebuffer.pitch * framebuffer.width) as usize;
+
+                    unsafe {
+                        core::ptr::copy(
+                            framebuffer.address.as_ptr().unwrap().add(copy_from),
+                            framebuffer.address.as_ptr().unwrap(),
+                            size,
+                        );
+                    }
+
+                    CURSOR.set_pos(0, CURSOR.cy.load(Ordering::SeqCst));
+                } else {
+                    CURSOR.set_pos(0, CURSOR.cy.load(Ordering::SeqCst) + 1);
+                }
             }
+        } else {
+            crate::drivers::video::put_char(
+                character,
+                CURSOR.cx.load(Ordering::SeqCst),
+                CURSOR.cy.load(Ordering::SeqCst),
+                CURSOR.fg.load(Ordering::SeqCst),
+                CURSOR.bg.load(Ordering::SeqCst),
+            );
+            CURSOR.move_right();
         }
     }
 
-    unsafe {
-        CURSOR.set_color(0xbababa, 0x000000);
-    }
+    CURSOR.set_color(0xbababa, 0x000000);
+}
+
+pub fn clear_screen() {
+    CURSOR.set_pos(0, 0);
+
+    crate::drivers::video::fill_screen(CURSOR.bg.load(Ordering::SeqCst));
 }
 
 #[macro_export]
 macro_rules! println {
-    () => (print!("\n"));
-    ($($arg:tt)*) => (print!("{}\n", &format!($($arg)*)));
+    () => (crate::print!("\n"));
+    ($($arg:tt)*) => (crate::print!("{}\n", &format!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => (puts(&format!($($arg)*)));
+    ($($arg:tt)*) => (crate::usr::tty::puts(&format!($($arg)*)));
 }
 
 pub struct InputBuffer {
@@ -218,13 +252,9 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
 
     if key.name == "Backspace" && input_buffer.buffer.len() > 0 {
         input_buffer.pop();
-        unsafe {
-            CURSOR.move_left();
-        }
+        CURSOR.move_left();
         puts(" ");
-        unsafe {
-            CURSOR.move_left();
-        }
+        CURSOR.move_left();
         return;
     }
 
@@ -234,14 +264,10 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
         }
 
         if key.name.ends_with("Left") {
-            unsafe {
-                CURSOR.move_left();
-            }
+            CURSOR.move_left();
             return;
         } else {
-            unsafe {
-                CURSOR.move_left();
-            }
+            CURSOR.move_right();
             return;
         }
     }
@@ -318,7 +344,7 @@ pub fn exec(command: &str) {
 
                 if arg.starts_with("0x") {
                     memory_address = parse_memory_address(arg.as_str()).unwrap();
-										continue;
+                    continue;
                 }
 
                 let num_arg = arg.parse::<usize>();
@@ -369,10 +395,24 @@ pub fn exec(command: &str) {
         return;
     }
 
-		if command == "memmap" {
-			crate::sys::mem::memory_map_info();
-			return;
-		}
+    if command == "memmap" {
+        crate::sys::mem::memory_map_info();
+        return;
+    }
+
+    if command == "memfill" {
+        let allocator = &crate::sys::mem::ALLOCATOR;
+        let free_mem = allocator.get_free_mem();
+
+        unsafe {
+            let layout = core::alloc::Layout::from_size_align(free_mem, 16).unwrap();
+            let ptr = alloc(layout);
+            dealloc(ptr, layout);
+        }
+        println!("Filled allocator with {} bytes", free_mem);
+
+        return;
+    }
 
     if command == "echo" {
         let mut input = "";
@@ -409,6 +449,11 @@ pub fn exec(command: &str) {
         } else {
             println!("First argument provided is not a memory address.");
         }
+    }
+
+    if command == "clear" {
+        clear_screen();
+        return;
     }
 
     println!("{:?} {:?}", command, args);

@@ -1,4 +1,4 @@
-use crate::libs::io::{inb, outb};
+use crate::arch::x86_common::io::{inb, outb};
 
 // COM1
 pub static PORT: u16 = 0x3f8;

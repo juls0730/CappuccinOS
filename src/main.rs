@@ -9,15 +9,15 @@ mod api;
 mod arch;
 mod drivers;
 mod libs;
-mod usr;
 mod sys;
+mod usr;
 
 use alloc::format;
 use drivers::serial;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-		sys::mem::init();
+    sys::mem::init();
 
     serial::init_serial();
 

@@ -6,4 +6,4 @@ mod imp {
     pub mod interrupts;
 }
 
-mod x86_common;
+pub mod x86_common;

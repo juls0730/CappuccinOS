@@ -53,7 +53,6 @@ pub fn put_pixel(x: u32, y: u32, color: u32) {
         let framebuffer = &framebuffer_response.framebuffers()[0];
 
         unsafe {
-            // let pixel_offset: *mut u32 = (y * (*g_vbe).pitch as u32 + (x * ((*g_vbe).bpp/8) as u32) + (*g_vbe).framebuffer) as *mut u32;
             let pixel_offset =
                 (y * framebuffer.pitch as u32 + (x * (framebuffer.bpp / 8) as u32)) as isize;
             *(framebuffer.address.as_ptr().unwrap().offset(pixel_offset) as *mut u32) = color;

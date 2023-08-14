@@ -1,23 +1,6 @@
 // Shitty keyboard driver
-
+use crate::arch::{interrupts, x86_common::io::{inb, outb}};
 use core::sync::atomic::{AtomicBool, Ordering};
-
-use alloc::format;
-
-use crate::{arch::interrupts, libs::io::inb};
-
-#[derive(Clone, Copy)]
-pub struct ModStatuses {
-    pub escape: bool,
-    pub tab: bool,
-    pub win: bool,
-    pub ctrl: bool,
-    pub alt: bool,
-    pub shift: bool,
-    pub caps: bool,
-    pub num_lock: bool,
-    pub scr_lock: bool,
-}
 
 pub struct Key<'a> {
     pub mod_key: bool,
@@ -39,10 +22,6 @@ pub fn init_keyboard(function_ptr: fn(key: Key)) {
         0xEE,
     );
 
-    unsafe {
-        interrupts::PICS.notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
-    }
-
     crate::libs::logging::log_ok("Keyboard initialized");
 }
 
@@ -62,6 +41,14 @@ extern "x86-interrupt" fn keyboard_interrupt_handler() {
     if let Some(key) = key {
         unsafe { FUNCTION_PTR(key) }
     }
+}
+
+pub fn set_leds(led_byte: u8) {
+		// Command bytes
+    outb(0x60, 0xED);
+    while !(inb(0x60) == 0xfa) {}
+		// Data byte
+    outb(0x60, led_byte);
 }
 
 fn parse_key(scancode: u8) -> Option<Key<'static>> {

@@ -5,7 +5,7 @@ use limine::{
     NonNullPtr,
 };
 
-use crate::{libs::logging::log_ok, println, print, usr::tty::puts};
+use crate::{libs::logging::log_ok, print, println};
 
 use super::allocator::BuddyAllocator;
 
@@ -46,10 +46,17 @@ fn find_largest_memory_region() -> Option<&'static NonNullPtr<MemmapEntry>> {
 pub fn memory_map_info() {
     let memmap = MEMMAP_REQUEST.get_response().get();
 
-		println!("====== Memory Map ======");
+    println!("====== Memory Map ======");
     for (i, region) in memmap.into_iter().flat_map(|a| a.memmap()).enumerate() {
-				let (size, label) = label_units((region.len) as usize);
-				println!("Entry {:<2}: {:#018x} - {:#018x}; {:<9}; Type: {:?}", i, region.base, region.len + region.base, format!("{size}{label}"), region.typ);
+        let (size, label) = label_units((region.len) as usize);
+        println!(
+            "Entry {:<2}: {:#018x} - {:#018x}; {:<9} Type: {:?}",
+            i,
+            region.base,
+            region.len + region.base,
+            format!("{size}{label};"),
+            region.typ
+        );
     }
 }
 
@@ -61,22 +68,17 @@ pub fn init() {
         (largest_region.len)
     ));
 
-    let a = largest_region.len as usize / 2;
-
-    ALLOCATOR.set_heap(
-        largest_region.base as *mut u8,
-        largest_region.len as usize,
-    );
+    ALLOCATOR.set_heap(largest_region.base as *mut u8, largest_region.len as usize);
 }
 
 fn label_units(bytes: usize) -> (usize, &'static str) {
-	if bytes >> 30 > 0 {
-			return (bytes >> 30, "GiB");
-	} else if bytes >> 20 > 0 {
-			return (bytes >> 20, "MiB");
-	} else if bytes >> 10 > 0 {
-			return (bytes >> 10, "KiB");
-	} else {
-			return (bytes, "Bytes");
-	}
+    if bytes >> 30 > 0 {
+        return (bytes >> 30, "GiB");
+    } else if bytes >> 20 > 0 {
+        return (bytes >> 20, "MiB");
+    } else if bytes >> 10 > 0 {
+        return (bytes >> 10, "KiB");
+    } else {
+        return (bytes, "Bytes");
+    }
 }

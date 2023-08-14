@@ -1,6 +1,7 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 
-use crate::drivers::keyboard::Key;
+
+use crate::drivers::keyboard::{Key, set_leds};
 
 struct ModStatus {
     pub win: bool,      // first bit
@@ -42,12 +43,14 @@ impl ModStatus {
 
 struct ModStatusBits {
     status: AtomicU8,
+    led_status: AtomicU8,
 }
 
 impl ModStatusBits {
     const fn new() -> Self {
         return Self {
             status: AtomicU8::new(0),
+            led_status: AtomicU8::new(0),
         };
     }
 
@@ -67,17 +70,31 @@ impl ModStatusBits {
 
     fn set_modifier_key(&self, key: &str, status: bool) {
         let mut mod_status = self.get_status();
+        let mut new_led_status = self.led_status.load(Ordering::SeqCst);
 
         match key {
             "win" => mod_status.win = status,
             "ctrl" => mod_status.ctrl = status,
             "alt" => mod_status.alt = status,
             "shift" => mod_status.shift = status,
-            "caps" => mod_status.caps = status,
-            "num_lock" => mod_status.num_lock = status,
-            "scr_lock" => mod_status.scr_lock = status,
+            "caps" => {
+                new_led_status ^= 0b00000100;
+                mod_status.caps = status
+            }
+            "num_lock" => {
+                new_led_status ^= 0b00000010;
+                mod_status.num_lock = status
+            }
+            "scr_lock" => {
+                new_led_status ^= 0b00000100;
+                mod_status.scr_lock = status
+            }
             _ => return,
         }
+
+        // set Keyboard led (caps, num lock, scroll lock)
+        set_leds(new_led_status);
+        self.led_status.store(new_led_status, Ordering::SeqCst);
 
         let new_value = mod_status.to_byte();
         self.status.store(new_value, Ordering::SeqCst);
@@ -95,9 +112,9 @@ pub fn init_shell() {
 pub fn handle_key(mut key: Key) {
     parse_mod_key(&key);
 
-		if let Some(_character) = key.character {
-			key = parse_key(key);
-		}
+    if let Some(_character) = key.character {
+        key = parse_key(key);
+    }
 
     super::tty::handle_key(key);
 }
@@ -108,40 +125,40 @@ pub fn prompt() {
 
 fn parse_key(key: Key) -> Key {
     let mod_status = MOD_STATUS.get_status();
-		let mut new_key = Key {
-			mod_key: false,
-			printable: true,
-			pressed: key.pressed,
-			name: key.name,
-			character: key.character
-		};
+    let mut new_key = Key {
+        mod_key: false,
+        printable: true,
+        pressed: key.pressed,
+        name: key.name,
+        character: key.character,
+    };
 
     if key.character.is_none() {
-			panic!("Key passed into parse_key is not a character key!");
-		}
+        panic!("Key passed into parse_key is not a character key!");
+    }
 
-		if mod_status.num_lock && key.name.starts_with("Keypad") {
-			new_key = parse_keypad_keys(key);
-			return new_key;
-		}
+    if mod_status.num_lock && key.name.starts_with("Keypad") {
+        new_key = parse_keypad_keys(key);
+        return new_key;
+    }
 
-		if mod_status.ctrl {
-			new_key.character = Some(parse_unicode_keys(&key));
-			return new_key;
-		}
+    if mod_status.ctrl {
+        new_key.character = Some(parse_unicode_keys(&key));
+        return new_key;
+    }
 
     if key.character.unwrap().is_alphabetic() && (mod_status.shift ^ mod_status.caps) {
         new_key.character = Some(key.character.unwrap().to_ascii_uppercase());
-				return new_key;
+        return new_key;
     }
 
-		if mod_status.shift {
-			new_key.character = Some(capitalize_non_alphabetical(key.character.unwrap()));
-			return new_key;
-		}
+    if mod_status.shift && !key.name.starts_with("Keypad") {
+        new_key.character = Some(capitalize_non_alphabetical(key.character.unwrap()));
+        return new_key;
+    }
 
-		new_key.character = Some(key.character.unwrap());
-		return new_key;
+    new_key.character = Some(key.character.unwrap());
+    return new_key;
 }
 
 fn capitalize_non_alphabetical(character: char) -> char {
@@ -207,101 +224,101 @@ fn parse_mod_key(key: &Key) {
 }
 
 fn parse_keypad_keys(key: Key) -> Key {
-	let mut new_key = Key {
-		mod_key: false,
-		printable: key.printable,
-		pressed: key.pressed,
-		name: key.name,
-		character: key.character
-	};
+    let mut new_key = Key {
+        mod_key: false,
+        printable: key.printable,
+        pressed: key.pressed,
+        name: key.name,
+        character: key.character,
+    };
 
-	match key.character.unwrap() {
-		'7' => {
-			new_key.printable = false;
-			new_key.name = "Home";
-			new_key.character = None;
+    match key.character.unwrap() {
+        '7' => {
+            new_key.printable = false;
+            new_key.name = "Home";
+            new_key.character = None;
 
-			return new_key;
-		}
-		'8' => {
-			new_key.printable = false;
-			new_key.name = "CurUp";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'9' => {
-			new_key.printable = false;
-			new_key.name = "PgUp";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'4' => {
-			new_key.printable = false;
-			new_key.name = "CurLeft";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'5' => {
-			new_key.printable = false;
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'6' => {
-			new_key.printable = false;
-			new_key.name = "CurRight";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'1' => {
-			new_key.printable = false;
-			new_key.name = "End";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'2' => {
-			new_key.printable = false;
-			new_key.name = "CurDown";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'3' => {
-			new_key.printable = false;
-			new_key.name = "PgDown";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'0' => {
-			new_key.printable = false;
-			new_key.name = "Insert";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		'.' => {
-			new_key.printable = false;
-			new_key.name = "Del";
-			new_key.character = None;
-			
-			return new_key;
-		}
-		_ => new_key,
-	}
+            return new_key;
+        }
+        '8' => {
+            new_key.printable = false;
+            new_key.name = "CurUp";
+            new_key.character = None;
+
+            return new_key;
+        }
+        '9' => {
+            new_key.printable = false;
+            new_key.name = "PgUp";
+            new_key.character = None;
+
+            return new_key;
+        }
+        '4' => {
+            new_key.printable = false;
+            new_key.name = "CurLeft";
+            new_key.character = None;
+
+            return new_key;
+        }
+        '5' => {
+            new_key.printable = false;
+            new_key.character = None;
+
+            return new_key;
+        }
+        '6' => {
+            new_key.printable = false;
+            new_key.name = "CurRight";
+            new_key.character = None;
+
+            return new_key;
+        }
+        '1' => {
+            new_key.printable = false;
+            new_key.name = "End";
+            new_key.character = None;
+
+            return new_key;
+        }
+        '2' => {
+            new_key.printable = false;
+            new_key.name = "CurDown";
+            new_key.character = None;
+
+            return new_key;
+        }
+        '3' => {
+            new_key.printable = false;
+            new_key.name = "PgDown";
+            new_key.character = None;
+
+            return new_key;
+        }
+        '0' => {
+            new_key.printable = false;
+            new_key.name = "Insert";
+            new_key.character = None;
+
+            return new_key;
+        }
+        '.' => {
+            new_key.printable = false;
+            new_key.name = "Del";
+            new_key.character = None;
+
+            return new_key;
+        }
+        _ => new_key,
+    }
 }
 
 // bad name
 fn parse_unicode_keys(key: &Key) -> char {
-	assert!(key.character.is_some());
+    assert!(key.character.is_some());
 
-	match key.character.unwrap() {
-		'c' => '\u{0003}',
-		_ => key.character.unwrap()
-	}
+    match key.character.unwrap() {
+        'c' => '\u{0003}',
+        _ => key.character.unwrap(),
+    }
 }
