@@ -29,8 +29,16 @@ impl Cursor {
             let framebuffer = &framebuffer_response.framebuffers()[0];
 
             if self.cx.load(Ordering::SeqCst) == (framebuffer.width / 8) as u16 - 1 {
-                self.cy.fetch_add(1, Ordering::SeqCst);
-                self.cx.swap(0, Ordering::SeqCst);
+                if self.cy.load(Ordering::SeqCst) == (framebuffer.height / 16) as u16 - 1 {
+                    scroll_console(framebuffer);
+
+                    self.cy
+                        .swap(((framebuffer.height / 16) - 1) as u16, Ordering::SeqCst);
+                    self.cx.swap(0, Ordering::SeqCst);
+                } else {
+                    self.cy.fetch_add(1, Ordering::SeqCst);
+                    self.cx.swap(0, Ordering::SeqCst);
+                }
             } else {
                 self.cx.fetch_add(1, Ordering::SeqCst);
             }
@@ -170,6 +178,7 @@ pub fn puts(string: &str) {
                 CURSOR.fg.load(Ordering::SeqCst),
                 CURSOR.bg.load(Ordering::SeqCst),
             );
+
             CURSOR.move_right();
         }
     }
@@ -178,14 +187,14 @@ pub fn puts(string: &str) {
 }
 
 pub fn scroll_console(framebuffer: &NonNullPtr<Framebuffer>) {
-		let size = framebuffer.pitch * framebuffer.height;
+    let size = framebuffer.pitch * framebuffer.height;
     let copy_from = ((size as f64 / framebuffer.height as f64) * 16.0) as usize;
 
     unsafe {
         core::ptr::copy(
             framebuffer.address.as_ptr().unwrap().add(copy_from),
             framebuffer.address.as_ptr().unwrap(),
-            (size * (framebuffer.bpp / 8) as u64) as usize,
+            size as usize,
         );
     }
 }
@@ -245,15 +254,6 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
         return;
     }
 
-    if key.character.is_some() {
-        if key.character.unwrap() == '\u{0003}' {
-            puts("^C\n");
-            input_buffer.clear();
-            super::shell::prompt();
-            return;
-        }
-    }
-
     if key.name == "Backspace" && input_buffer.buffer.len() > 0 {
         input_buffer.pop();
         CURSOR.move_left();
@@ -276,7 +276,14 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
         }
     }
 
-    if key.printable {
+    if key.character.is_some() {
+        if key.character.unwrap() == '\u{0003}' {
+            puts("^C\n");
+            input_buffer.clear();
+            super::shell::prompt();
+            return;
+        }
+
         let character = key.character.unwrap();
         input_buffer.push(character as u8);
 

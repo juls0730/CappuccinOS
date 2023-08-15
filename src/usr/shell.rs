@@ -1,7 +1,6 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 
-
-use crate::drivers::keyboard::{Key, set_leds};
+use crate::drivers::keyboard::{set_leds, Key};
 
 struct ModStatus {
     pub win: bool,      // first bit
@@ -110,9 +109,11 @@ pub fn init_shell() {
 }
 
 pub fn handle_key(mut key: Key) {
-    parse_mod_key(&key);
+    if key.mod_key {
+        parse_mod_key(&key);
+    }
 
-    if let Some(_character) = key.character {
+    if key.character.is_some() {
         key = parse_key(key);
     }
 
@@ -127,7 +128,6 @@ fn parse_key(key: Key) -> Key {
     let mod_status = MOD_STATUS.get_status();
     let mut new_key = Key {
         mod_key: false,
-        printable: true,
         pressed: key.pressed,
         name: key.name,
         character: key.character,
@@ -226,7 +226,6 @@ fn parse_mod_key(key: &Key) {
 fn parse_keypad_keys(key: Key) -> Key {
     let mut new_key = Key {
         mod_key: false,
-        printable: key.printable,
         pressed: key.pressed,
         name: key.name,
         character: key.character,
@@ -234,76 +233,65 @@ fn parse_keypad_keys(key: Key) -> Key {
 
     match key.character.unwrap() {
         '7' => {
-            new_key.printable = false;
             new_key.name = "Home";
             new_key.character = None;
 
             return new_key;
         }
         '8' => {
-            new_key.printable = false;
             new_key.name = "CurUp";
             new_key.character = None;
 
             return new_key;
         }
         '9' => {
-            new_key.printable = false;
             new_key.name = "PgUp";
             new_key.character = None;
 
             return new_key;
         }
         '4' => {
-            new_key.printable = false;
             new_key.name = "CurLeft";
             new_key.character = None;
 
             return new_key;
         }
         '5' => {
-            new_key.printable = false;
             new_key.character = None;
 
             return new_key;
         }
         '6' => {
-            new_key.printable = false;
             new_key.name = "CurRight";
             new_key.character = None;
 
             return new_key;
         }
         '1' => {
-            new_key.printable = false;
             new_key.name = "End";
             new_key.character = None;
 
             return new_key;
         }
         '2' => {
-            new_key.printable = false;
             new_key.name = "CurDown";
             new_key.character = None;
 
             return new_key;
         }
         '3' => {
-            new_key.printable = false;
             new_key.name = "PgDown";
             new_key.character = None;
 
             return new_key;
         }
         '0' => {
-            new_key.printable = false;
             new_key.name = "Insert";
             new_key.character = None;
 
             return new_key;
         }
         '.' => {
-            new_key.printable = false;
             new_key.name = "Del";
             new_key.character = None;
 

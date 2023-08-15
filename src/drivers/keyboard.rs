@@ -1,10 +1,12 @@
 // Shitty keyboard driver
-use crate::arch::{interrupts, x86_common::io::{inb, outb}};
+use crate::arch::{
+    interrupts,
+    x86_common::io::{inb, outb},
+};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Key<'a> {
     pub mod_key: bool,
-    pub printable: bool,
     pub pressed: bool,
     pub name: &'a str,
     pub character: Option<char>,
@@ -44,10 +46,10 @@ extern "x86-interrupt" fn keyboard_interrupt_handler() {
 }
 
 pub fn set_leds(led_byte: u8) {
-		// Command bytes
+    // Command bytes
     outb(0x60, 0xED);
     while !(inb(0x60) == 0xfa) {}
-		// Data byte
+    // Data byte
     outb(0x60, led_byte);
 }
 
@@ -56,7 +58,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x01 => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "Esc",
                 character: None,
@@ -65,7 +66,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x02 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "1",
                 character: Some('1'),
@@ -74,7 +74,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x03 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "2",
                 character: Some('2'),
@@ -83,7 +82,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x04 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "3",
                 character: Some('3'),
@@ -92,7 +90,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x05 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "4",
                 character: Some('4'),
@@ -101,7 +98,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x06 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "5",
                 character: Some('5'),
@@ -110,7 +106,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x07 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "6",
                 character: Some('6'),
@@ -119,7 +114,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x08 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "7",
                 character: Some('7'),
@@ -128,7 +122,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x09 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "8",
                 character: Some('8'),
@@ -137,7 +130,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x0A => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "9",
                 character: Some('9'),
@@ -146,7 +138,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x0B => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "0",
                 character: Some('0'),
@@ -155,7 +146,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x0C => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "-",
                 character: Some('-'),
@@ -164,7 +154,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x0D => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "=",
                 character: Some('='),
@@ -173,7 +162,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x0E => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "Backspace",
                 character: None,
@@ -182,7 +170,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x0F => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "Tab",
                 character: None,
@@ -191,7 +178,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x10 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "q",
                 character: Some('q'),
@@ -200,7 +186,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x11 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "w",
                 character: Some('w'),
@@ -209,7 +194,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x12 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "e",
                 character: Some('e'),
@@ -218,7 +202,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x13 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "r",
                 character: Some('r'),
@@ -227,7 +210,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x14 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "t",
                 character: Some('t'),
@@ -236,7 +218,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x15 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "y",
                 character: Some('y'),
@@ -245,7 +226,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x16 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "u",
                 character: Some('u'),
@@ -254,7 +234,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x17 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "i",
                 character: Some('i'),
@@ -263,7 +242,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x18 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "o",
                 character: Some('o'),
@@ -272,7 +250,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x19 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "p",
                 character: Some('p'),
@@ -281,7 +258,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x1A => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "[",
                 character: Some('['),
@@ -290,7 +266,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x1B => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "]",
                 character: Some(']'),
@@ -299,7 +274,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x1C => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "Enter",
                 character: None,
@@ -309,7 +283,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "RCtrl",
                     character: None,
@@ -318,7 +291,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "LCtrl",
                 character: None,
@@ -327,7 +299,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x1E => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "a",
                 character: Some('a'),
@@ -336,7 +307,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x1F => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "s",
                 character: Some('s'),
@@ -345,7 +315,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x20 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "d",
                 character: Some('d'),
@@ -354,7 +323,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x21 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "f",
                 character: Some('f'),
@@ -363,7 +331,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x22 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "g",
                 character: Some('g'),
@@ -372,7 +339,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x23 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "h",
                 character: Some('h'),
@@ -381,7 +347,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x24 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "j",
                 character: Some('j'),
@@ -390,7 +355,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x25 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "k",
                 character: Some('k'),
@@ -399,7 +363,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x26 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "l",
                 character: Some('l'),
@@ -408,7 +371,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x27 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: ";",
                 character: Some(';'),
@@ -417,7 +379,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x28 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "'",
                 character: Some('\''),
@@ -426,7 +387,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x29 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "`",
                 character: Some('`'),
@@ -435,7 +395,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x2A => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "LShift",
                 character: None,
@@ -444,7 +403,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x2B => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "\\",
                 character: Some('\\'),
@@ -453,7 +411,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x2C => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "z",
                 character: Some('z'),
@@ -462,7 +419,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x2D => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "x",
                 character: Some('x'),
@@ -471,7 +427,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x2E => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "c",
                 character: Some('c'),
@@ -480,7 +435,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x2F => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "v",
                 character: Some('v'),
@@ -489,7 +443,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x30 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "b",
                 character: Some('b'),
@@ -498,7 +451,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x31 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "n",
                 character: Some('n'),
@@ -507,7 +459,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x32 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "m",
                 character: Some('m'),
@@ -516,7 +467,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x33 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: ",",
                 character: Some(','),
@@ -525,7 +475,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x34 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: ".",
                 character: Some('.'),
@@ -534,7 +483,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x35 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "/",
                 character: Some('/'),
@@ -543,7 +491,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x36 => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "RShift",
                 character: None,
@@ -552,7 +499,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x37 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "*",
                 character: Some('*'),
@@ -561,7 +507,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x38 => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "Alt",
                 character: None,
@@ -570,7 +515,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x39 => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: " ",
                 character: Some(' '),
@@ -579,7 +523,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x3A => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "CapsLock",
                 character: None,
@@ -588,7 +531,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x3B => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F1",
                 character: None,
@@ -597,7 +539,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x3C => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F2",
                 character: None,
@@ -606,7 +547,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x3D => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F3",
                 character: None,
@@ -615,7 +555,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x3E => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F4",
                 character: None,
@@ -624,7 +563,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x3F => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F5",
                 character: None,
@@ -633,7 +571,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x40 => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F6",
                 character: None,
@@ -642,7 +579,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x41 => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F7",
                 character: None,
@@ -651,7 +587,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x42 => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F8",
                 character: None,
@@ -660,7 +595,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x43 => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F9",
                 character: None,
@@ -669,7 +603,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x44 => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F10",
                 character: None,
@@ -678,7 +611,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x45 => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "NumLock",
                 character: None,
@@ -687,7 +619,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x46 => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: true,
                 name: "ScrLock",
                 character: None,
@@ -697,7 +628,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "Home",
                     character: None,
@@ -706,7 +636,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 7",
                 character: Some('7'),
@@ -716,7 +645,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "CurUp",
                     character: None,
@@ -725,7 +653,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 8",
                 character: Some('8'),
@@ -735,7 +662,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "PgUp",
                     character: None,
@@ -744,7 +670,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 9",
                 character: Some('9'),
@@ -753,7 +678,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x4A => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "-",
                 character: Some('-'),
@@ -763,7 +687,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "CurLeft",
                     character: None,
@@ -772,7 +695,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 4",
                 character: Some('4'),
@@ -781,7 +703,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x4C => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 5",
                 character: Some('5'),
@@ -791,7 +712,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "CurRight",
                     character: None,
@@ -800,7 +720,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 6",
                 character: Some('6'),
@@ -809,7 +728,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x4E => {
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "+",
                 character: Some('+'),
@@ -819,7 +737,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "End",
                     character: None,
@@ -828,7 +745,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 1",
                 character: Some('1'),
@@ -838,7 +754,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "CurDown",
                     character: None,
@@ -847,7 +762,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 2",
                 character: Some('2'),
@@ -857,7 +771,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "PgDn",
                     character: None,
@@ -866,7 +779,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 3",
                 character: Some('3'),
@@ -876,7 +788,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "Insert",
                     character: None,
@@ -885,7 +796,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad 0",
                 character: Some('0'),
@@ -895,7 +805,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: true,
                     name: "Del",
                     character: None,
@@ -904,7 +813,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: false,
-                printable: true,
                 pressed: true,
                 name: "Keypad .",
                 character: Some('.'),
@@ -913,7 +821,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x57 => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F11",
                 character: None,
@@ -922,7 +829,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x58 => {
             return Some(Key {
                 mod_key: false,
-                printable: false,
                 pressed: true,
                 name: "F10",
                 character: None,
@@ -931,7 +837,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0x81 => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: false,
                 name: "Esc",
                 character: None,
@@ -941,7 +846,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
             if EXTENDED_KEY.load(Ordering::SeqCst) == true {
                 return Some(Key {
                     mod_key: false,
-                    printable: false,
                     pressed: false,
                     name: "RCtrl",
                     character: None,
@@ -950,7 +854,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
 
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: false,
                 name: "LCtrl",
                 character: None,
@@ -959,7 +862,6 @@ fn parse_key(scancode: u8) -> Option<Key<'static>> {
         0xAA => {
             return Some(Key {
                 mod_key: true,
-                printable: false,
                 pressed: false,
                 name: "LShift",
                 character: None,
