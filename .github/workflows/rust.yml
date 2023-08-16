@@ -16,6 +16,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Set nightly rust
+      run: rustup override set nightly
+    - name: Add x86_64 target
+      run: rustup target add x86_64-unknown-none
+    - name: Install rust-src
+      run: rustup component add rust-src
     - name: Build
       run: cargo build --verbose
     # TODO: testing
