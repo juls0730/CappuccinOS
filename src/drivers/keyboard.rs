@@ -19,7 +19,7 @@ pub fn init_keyboard(function_ptr: fn(key: Key)) {
 
     interrupts::idt_set_gate(
         interrupts::InterruptIndex::Keyboard.as_u8(),
-        keyboard_interrupt_handler,
+        keyboard_interrupt_handler as u64,
         0x28,
         0xEE,
     );

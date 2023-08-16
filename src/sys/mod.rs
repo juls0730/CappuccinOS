@@ -1,2 +1,2 @@
-pub mod mem;
 pub mod allocator;
+pub mod mem;

@@ -15,7 +15,11 @@ pub fn fill_screen(color: u32) {
         let framebuffer = &framebuffer_response.framebuffers()[0];
         let buffer_size = (framebuffer.pitch * framebuffer.width) as usize;
 
-        crate::libs::util::memset32(framebuffer.address.as_ptr().unwrap() as *mut u32, color, buffer_size);
+        crate::libs::util::memset32(
+            framebuffer.address.as_ptr().unwrap() as *mut u32,
+            color,
+            buffer_size,
+        );
     }
 }
 

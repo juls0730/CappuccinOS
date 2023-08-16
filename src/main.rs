@@ -1,4 +1,5 @@
 #![feature(abi_x86_interrupt)]
+#![feature(naked_functions)]
 #![no_std]
 #![no_main]
 
