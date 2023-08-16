@@ -4,7 +4,7 @@ use crate::arch::x86_common::io::{inb, outb};
 pub static PORT: u16 = 0x3f8;
 
 // Serial ports are as follows:
-// PORT + 0: Data register. 
+// PORT + 0: Data register.
 //           Reading this recieves from this buffer.
 //           Writing to this writes to the transmit buffer.
 // PORT + 1: Interrupt enable register.

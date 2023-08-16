@@ -8,7 +8,7 @@ use core::cell::UnsafeCell;
 use core::cmp::{max, min};
 use core::ptr;
 use core::sync::atomic::Ordering::SeqCst;
-use core::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU8};
+use core::sync::atomic::{AtomicPtr, AtomicU8, AtomicUsize};
 
 const fn log2(num: usize) -> u8 {
     let mut temp = num;
@@ -49,7 +49,7 @@ unsafe impl Sync for BuddyAllocator {}
 
 impl BuddyAllocator {
     pub const fn new_unchecked(heap_start: *mut u8, heap_size: usize) -> Self {
-				let min_block_size_raw = heap_size >> (HEAP_BLOCKS - 1);
+        let min_block_size_raw = heap_size >> (HEAP_BLOCKS - 1);
         let min_block_size = AtomicUsize::new(min_block_size_raw);
         let mut free_lists_buf: [*mut FreeBlock; HEAP_BLOCKS] = [ptr::null_mut(); HEAP_BLOCKS];
 
@@ -70,11 +70,11 @@ impl BuddyAllocator {
     }
 
     pub fn set_heap(&self, heap_start: *mut u8, heap_size: usize) {
-				// Reconstruct heap to account for new heap space.
-				let min_block_size = heap_size >> (HEAP_BLOCKS - 1);
+        // Reconstruct heap to account for new heap space.
+        let min_block_size = heap_size >> (HEAP_BLOCKS - 1);
 
-				self.min_block_size.swap(min_block_size, SeqCst);
-				self.min_block_size_log2.swap(log2(min_block_size), SeqCst);
+        self.min_block_size.swap(min_block_size, SeqCst);
+        self.min_block_size_log2.swap(log2(min_block_size), SeqCst);
 
         let mut free_lists_buf: [*mut FreeBlock; HEAP_BLOCKS] = [ptr::null_mut(); HEAP_BLOCKS];
 
@@ -82,7 +82,7 @@ impl BuddyAllocator {
 
         let free_lists: UnsafeCell<[*mut FreeBlock; 16]> = UnsafeCell::new(free_lists_buf);
 
-				unsafe { (*self.free_lists.get()) = *free_lists.get() }
+        unsafe { (*self.free_lists.get()) = *free_lists.get() }
         self.heap_start.swap(heap_start, SeqCst);
         self.heap_size.swap(heap_size, SeqCst);
     }

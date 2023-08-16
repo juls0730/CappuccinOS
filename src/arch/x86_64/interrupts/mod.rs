@@ -1,3 +1,5 @@
+mod exceptions;
+
 use crate::arch::x86_common::pic::ChainedPics;
 
 #[derive(Copy, Clone)]
@@ -48,8 +50,8 @@ pub static mut PICS: ChainedPics = ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET);
 
 static mut IDT_PTR: IdtPtr = IdtPtr { limit: 0, base: 0 };
 
-pub fn idt_set_gate(num: u8, function_ptr: extern "x86-interrupt" fn(), sel: u16, flags: u8) {
-    let base = function_ptr as u64;
+pub fn idt_set_gate(num: u8, function_ptr: u64, sel: u16, flags: u8) {
+    let base = function_ptr;
     unsafe {
         IDT[num as usize] = IdtEntry {
             base_lo: (base & 0xFFFF) as u16,
@@ -70,14 +72,6 @@ extern "x86-interrupt" fn timer_handler() {
     }
 }
 
-// clear the interrupt and pretend like it never happened
-extern "x86-interrupt" fn interrupt_handler() {
-    crate::libs::logging::log_error("Unknown error");
-    unsafe {
-        core::arch::asm!("cli", "sti");
-    }
-}
-
 fn idt_init() {
     unsafe {
         let idt_size = core::mem::size_of::<IdtEntry>() * 256;
@@ -88,10 +82,17 @@ fn idt_init() {
 
         // Set every interrupt to the default interrupt handler
         for num in 0..(idt_size) {
-            idt_set_gate(num as u8, interrupt_handler, 0x28, 0xEE);
+            idt_set_gate(num as u8, exceptions::generic_handler as u64, 0x28, 0xEE);
         }
 
-        idt_set_gate(InterruptIndex::Timer.as_u8(), timer_handler, 0x28, 0xEE);
+        exceptions::set_exceptions();
+
+        idt_set_gate(
+            InterruptIndex::Timer.as_u8(),
+            timer_handler as u64,
+            0x28,
+            0xEE,
+        );
 
         core::arch::asm!(
             "lidt [{}]",

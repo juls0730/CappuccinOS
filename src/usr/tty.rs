@@ -189,12 +189,12 @@ pub fn puts(string: &str) {
 pub fn scroll_console(framebuffer: &NonNullPtr<Framebuffer>) {
     let size = framebuffer.pitch * framebuffer.height;
 
-		// size / height = bytes per row of pixels, multiplied by 16 since font height is 16 pixels.
+    // size / height = bytes per row of pixels, multiplied by 16 since font height is 16 pixels.
     let copy_from = ((size as f64 / framebuffer.height as f64) * 16.0) as usize;
 
-		// Copy the framebuffer minus the top row to the framebuffer,
-		// Then clear the last row with the background color to avoid noise on bare metal
-		// See issue #1
+    // Copy the framebuffer minus the top row to the framebuffer,
+    // Then clear the last row with the background color to avoid noise on bare metal
+    // See issue #1
     unsafe {
         core::ptr::copy(
             framebuffer.address.as_ptr().unwrap().add(copy_from),
@@ -202,7 +202,15 @@ pub fn scroll_console(framebuffer: &NonNullPtr<Framebuffer>) {
             size as usize - copy_from,
         );
 
-        crate::libs::util::memset32(framebuffer.address.as_ptr().unwrap().add(size as usize - copy_from) as *mut u32, CURSOR.bg.load(Ordering::SeqCst), copy_from);
+        crate::libs::util::memset32(
+            framebuffer
+                .address
+                .as_ptr()
+                .unwrap()
+                .add(size as usize - copy_from) as *mut u32,
+            CURSOR.bg.load(Ordering::SeqCst),
+            copy_from,
+        );
     }
 }
 
@@ -215,12 +223,12 @@ pub fn clear_screen() {
 #[macro_export]
 macro_rules! println {
     () => (crate::print!("\n"));
-    ($($arg:tt)*) => (crate::print!("{}\n", &format!($($arg)*)));
+    ($($arg:tt)*) => (crate::print!("{}\n", &alloc::format!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => (crate::usr::tty::puts(&format!($($arg)*)));
+    ($($arg:tt)*) => (crate::usr::tty::puts(&alloc::format!($($arg)*)));
 }
 
 pub struct InputBuffer {
@@ -483,7 +491,6 @@ pub fn exec(command: &str) {
 
             println!("{:?}", framebuffer);
             return;
-        }
     }
 
     println!("{:?} {:?}", command, args);
