@@ -491,6 +491,7 @@ pub fn exec(command: &str) {
 
             println!("{:?}", framebuffer);
             return;
+        }
     }
 
     println!("{:?} {:?}", command, args);
