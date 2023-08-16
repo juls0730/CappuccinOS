@@ -45,7 +45,7 @@ pub extern "C" fn div_error() {
             "mov rdi, 0x00",
             "call exception_handler",
             "add esp, 4",
-            "iretd",
+            "iretq",
             options(noreturn)
         );
     }
@@ -58,7 +58,7 @@ pub extern "C" fn invalid_opcode() {
             "mov rdi, 0x06",
             "call exception_handler",
             "add esp, 4",
-            "iretd",
+            "iretq",
             options(noreturn)
         );
     }
@@ -71,7 +71,7 @@ pub extern "C" fn double_fault() {
             "mov rdi, 0x08",
             "call exception_handler",
             "add esp, 4",
-            "iretd",
+            "iretq",
             options(noreturn)
         );
     }
@@ -84,7 +84,7 @@ pub extern "C" fn general_protection_fault() {
             "mov rdi, 0x0D",
             "call exception_handler",
             "add esp, 4",
-            "iretd",
+            "iretq",
             options(noreturn)
         );
     }
@@ -97,7 +97,7 @@ pub extern "C" fn page_fault() {
             "mov rdi, 0x0E",
             "call exception_handler",
             "add esp, 4",
-            "iretd",
+            "iretq",
             options(noreturn)
         );
     }
@@ -110,7 +110,7 @@ pub extern "C" fn generic_handler() {
             "mov rdi, 0xFF",
             "call exception_handler",
             "add esp, 4",
-            "iretd",
+            "iretq",
             options(noreturn)
         );
     }

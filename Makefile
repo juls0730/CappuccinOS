@@ -18,9 +18,14 @@ ifeq (${ARCH},)
 	ARCH := x86_64
 endif
 
-.PHONY: clean run build line-count
+.PHONY: all clean run build line-count
+
+all: build
 
 build: prepare-bin-files compile-bootloader compile-binaries build-iso
+
+check: 
+		cargo check
 
 prepare-bin-files:
 		rm -rf bin/iso_root
