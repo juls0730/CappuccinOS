@@ -1,7 +1,7 @@
 // Shitty keyboard driver
 use crate::arch::{
     interrupts,
-    x86_common::io::{inb, outb},
+    io::{inb, outb},
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 

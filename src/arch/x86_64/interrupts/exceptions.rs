@@ -34,7 +34,11 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) {
         eflags,
     ));
 
-    loop {}
+    loop {
+        unsafe {
+            core::arch::asm!("hlt");
+        }
+    }
 }
 
 #[naked]
