@@ -29,7 +29,7 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler() {
 }
 
 pub fn consume_scancode() {
-	let _ = inb(0x60);
+    let _ = inb(0x60);
 }
 
 pub fn set_leds(led_byte: u8) {

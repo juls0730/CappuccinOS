@@ -105,7 +105,7 @@ static MOD_STATUS: ModStatusBits = ModStatusBits::new();
 pub fn init_shell() {
     prompt();
 
-		crate::drivers::keyboard::consume_scancode();
+    crate::drivers::keyboard::consume_scancode();
 }
 
 pub fn handle_key(mut key: Key) {
