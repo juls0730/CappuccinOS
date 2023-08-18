@@ -103,9 +103,9 @@ impl ModStatusBits {
 static MOD_STATUS: ModStatusBits = ModStatusBits::new();
 
 pub fn init_shell() {
-    crate::drivers::keyboard::init_keyboard(handle_key);
-
     prompt();
+
+		crate::drivers::keyboard::consume_scancode();
 }
 
 pub fn handle_key(mut key: Key) {

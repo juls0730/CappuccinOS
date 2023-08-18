@@ -94,6 +94,13 @@ fn idt_init() {
             0xEE,
         );
 
+        idt_set_gate(
+            InterruptIndex::Keyboard.as_u8(),
+            crate::drivers::keyboard::keyboard_interrupt_handler as u64,
+            0x28,
+            0xEE,
+        );
+
         core::arch::asm!(
             "lidt [{}]",
             "sti",
