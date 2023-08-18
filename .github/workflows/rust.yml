@@ -10,17 +10,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  formatting:
-    name: cargo fmt
+  
+format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      # Ensure rustfmt is installed and setup problem matcher
-      - uses: actions-rust-lang/setup-rust-toolchain@v1.1
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: mbrobbel/rustfmt-check@master
         with:
-          components: rustfmt
-      - name: Rustfmt Check
-        uses: actions-rust-lang/rustfmt@v1.1
+          token: ${{ secrets.GITHUB_TOKEN }}
+          mode: review
   build:
     runs-on: ubuntu-latest
     steps:
