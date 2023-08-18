@@ -14,24 +14,7 @@ pub struct Key<'a> {
 
 static EXTENDED_KEY: AtomicBool = AtomicBool::new(false);
 
-pub fn init_keyboard(function_ptr: fn(key: Key)) {
-    unsafe { FUNCTION_PTR = function_ptr }
-
-    interrupts::idt_set_gate(
-        interrupts::InterruptIndex::Keyboard.as_u8(),
-        keyboard_interrupt_handler as u64,
-        0x28,
-        0xEE,
-    );
-
-    crate::libs::logging::log_ok("Keyboard initialized");
-}
-
-static mut FUNCTION_PTR: fn(key: Key) = dummy;
-
-fn dummy(_key: Key) {}
-
-extern "x86-interrupt" fn keyboard_interrupt_handler() {
+pub extern "x86-interrupt" fn keyboard_interrupt_handler() {
     unsafe {
         interrupts::PICS.notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
     }
@@ -41,8 +24,12 @@ extern "x86-interrupt" fn keyboard_interrupt_handler() {
     let key = parse_key(scancode);
 
     if let Some(key) = key {
-        unsafe { FUNCTION_PTR(key) }
+        crate::usr::shell::handle_key(key)
     }
+}
+
+pub fn consume_scancode() {
+	let _ = inb(0x60);
 }
 
 pub fn set_leds(led_byte: u8) {
