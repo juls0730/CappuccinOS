@@ -103,7 +103,6 @@ fn idt_init() {
 
         core::arch::asm!(
             "lidt [{}]",
-            "sti",
             in(reg) &IDT_PTR
         );
 
@@ -116,5 +115,6 @@ pub fn init() {
 
     unsafe {
         PICS.initialize();
+        core::arch::asm!("sti");
     }
 }
