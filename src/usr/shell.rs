@@ -1,6 +1,8 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 
-use crate::drivers::keyboard::{set_leds, Key};
+use crate::drivers::keyboard::Key;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::drivers::keyboard::set_leds;
 
 struct ModStatus {
     pub win: bool,      // first bit
@@ -92,6 +94,7 @@ impl ModStatusBits {
         }
 
         // set Keyboard led (caps, num lock, scroll lock)
+				#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         set_leds(new_led_status);
         self.led_status.store(new_led_status, Ordering::SeqCst);
 
@@ -105,6 +108,7 @@ static MOD_STATUS: ModStatusBits = ModStatusBits::new();
 pub fn init_shell() {
     prompt();
 
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     crate::drivers::keyboard::consume_scancode();
 }
 

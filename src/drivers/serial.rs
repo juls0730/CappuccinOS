@@ -1,3 +1,4 @@
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::arch::io::{inb, outb};
 
 // COM1
@@ -11,6 +12,7 @@ pub static PORT: u16 = 0x3f8;
 // PORT + 2: Interrupt identification and FIFO control registers.
 // PORT + 3: Line control register, this sets DLAB to the most significant bit.
 // PORT + 4: Modem control register
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn init_serial() -> u8 {
     outb(PORT + 1, 0x00);
     outb(PORT + 3, 0x80);
@@ -34,10 +36,18 @@ pub fn init_serial() -> u8 {
     return 0;
 }
 
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+pub fn init_serial() -> u8 {
+	return 0;
+}
+
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn is_transmit_empty() -> bool {
     return (inb(PORT + 5) & 0x20) != 0x20;
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn write_serial(a: u8) {
     while is_transmit_empty() {}
     outb(PORT, a);

@@ -1,4 +1,5 @@
 // Shitty keyboard driver
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::arch::{
     interrupts,
     io::{inb, outb},
@@ -14,6 +15,7 @@ pub struct Key<'a> {
 
 static EXTENDED_KEY: AtomicBool = AtomicBool::new(false);
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "x86-interrupt" fn keyboard_interrupt_handler() {
     unsafe {
         interrupts::PICS.notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
@@ -28,10 +30,12 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler() {
     }
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn consume_scancode() {
     let _ = inb(0x60);
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn set_leds(led_byte: u8) {
     // Command bytes
     outb(0x60, 0xED);
