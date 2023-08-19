@@ -22,7 +22,7 @@ pub extern "C" fn _start() -> ! {
 
     serial::init_serial();
 
-		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     arch::interrupts::init();
 
     usr::shell::init_shell();

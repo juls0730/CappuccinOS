@@ -38,9 +38,8 @@ pub fn init_serial() -> u8 {
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 pub fn init_serial() -> u8 {
-	return 0;
+    return 0;
 }
-
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn is_transmit_empty() -> bool {
