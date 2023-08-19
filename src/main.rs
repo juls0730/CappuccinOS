@@ -32,7 +32,7 @@ pub extern "C" fn _start() -> ! {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     libs::logging::log_error(&format!("{}", info));
-		
+
     hcf();
 }
 
@@ -42,7 +42,7 @@ fn hcf() -> ! {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             core::arch::asm!("hlt");
 
-						#[cfg(target_arch = "aarch64")]
+            #[cfg(target_arch = "aarch64")]
             core::arch::asm!("wfi");
         }
     }
