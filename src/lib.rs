@@ -4,9 +4,6 @@
 
 extern crate alloc;
 
-#[macro_use]
-pub mod api;
-
 pub mod drivers;
 pub mod libs;
 pub mod sys;

@@ -483,15 +483,21 @@ pub fn exec(command: &str) {
     }
 
     if command == "test" {
-        if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
-            .get_response()
-            .get()
-        {
-            let framebuffer = &framebuffer_response.framebuffers()[0];
+        let message = "Hello, world! (but from syscalls)";
 
-            println!("{:?}", framebuffer);
-            return;
+        unsafe {
+            core::arch::asm!(
+                "mov rdi, 0x01", // write syscall
+                "mov rsi, 0x01", // stdio (but it doesnt matter)
+                "mov rdx, {0:r}", // pointer
+                "mov rcx, {1:r}", // count
+                "int 0x80",
+                in(reg) message.as_ptr(),
+                in(reg) message.len()
+            );
         }
+
+        return;
     }
 
     println!("{:?} {:?}", command, args);

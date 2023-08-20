@@ -5,8 +5,6 @@
 
 extern crate alloc;
 
-mod api;
-
 mod arch;
 mod drivers;
 mod libs;

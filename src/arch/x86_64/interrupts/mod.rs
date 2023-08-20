@@ -101,6 +101,8 @@ fn idt_init() {
             0xEE,
         );
 
+        idt_set_gate(0x80, syscall as u64, 0x28, 0xEE);
+
         core::arch::asm!(
             "lidt [{}]",
             in(reg) &IDT_PTR
@@ -108,6 +110,35 @@ fn idt_init() {
 
         crate::libs::logging::log_ok("Interrupt Descriptor Table");
     }
+}
+
+#[naked]
+pub extern "C" fn syscall() {
+    unsafe {
+        core::arch::asm!(
+            "push rdi",
+            "push rsi",
+            "push rdx",
+            "push rcx",
+            "call syscall_handler",
+            "pop rdi",
+            "pop rsi",
+            "pop rdx",
+            "pop rcx",
+            "iretq",
+            options(noreturn)
+        );
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn syscall_handler(rdi: u64, rsi: u64, rdx: u64, rcx: u64) {
+    let buf = rdx as *const u8; // Treat as pointer to u8 (byte array)
+    let count = rcx as usize;
+
+    let slice = unsafe { core::slice::from_raw_parts(buf, count) };
+    let message = core::str::from_utf8(slice).unwrap();
+    crate::print!("{}", message);
 }
 
 pub fn init() {
