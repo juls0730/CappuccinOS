@@ -1,4 +1,7 @@
-use core::sync::atomic::{AtomicU16, AtomicU32, Ordering};
+use core::{
+    mem::size_of,
+    sync::atomic::{AtomicU16, AtomicU32, Ordering},
+};
 
 use alloc::{
     alloc::{alloc, dealloc},
@@ -160,8 +163,6 @@ pub fn puts(string: &str) {
             {
                 let framebuffer = &framebuffer_response.framebuffers()[0];
 
-                // ! TODO: This copies excess data into the video buffer and thus,
-                // leads to noise on my machine.
                 if (CURSOR.cy.load(Ordering::SeqCst) + 1) >= (framebuffer.height / 16) as u16 {
                     scroll_console(framebuffer);
 
@@ -316,9 +317,9 @@ pub fn exec(command: &str) {
     if command == "memstat" {
         let allocator = &crate::sys::mem::ALLOCATOR;
 
-        let (used_mem, used_mem_label) = label_units(allocator.get_used_mem());
-        let (free_mem, free_mem_label) = label_units(allocator.get_free_mem());
-        let (total_mem, total_mem_label) = label_units(allocator.get_total_mem());
+        let (used_mem, used_mem_label) = crate::sys::mem::label_units(allocator.get_used_mem());
+        let (free_mem, free_mem_label) = crate::sys::mem::label_units(allocator.get_free_mem());
+        let (total_mem, total_mem_label) = crate::sys::mem::label_units(allocator.get_total_mem());
 
         println!(
             "Allocated so far: {used_mem} {used_mem_label}\nFree memory: {free_mem} {free_mem_label}\nTotal Memory: {total_mem} {total_mem_label}",
@@ -483,19 +484,7 @@ pub fn exec(command: &str) {
     }
 
     if command == "test" {
-        let message = "Hello, world! (but from syscalls)";
-
-        unsafe {
-            core::arch::asm!(
-                "mov rdi, 0x01", // write syscall
-                "mov rsi, 0x01", // stdio (but it doesnt matter)
-                "mov rdx, {0:r}", // pointer
-                "mov rcx, {1:r}", // count
-                "int 0x80",
-                in(reg) message.as_ptr(),
-                in(reg) message.len()
-            );
-        }
+        println!("test");
 
         return;
     }
@@ -594,17 +583,5 @@ fn parse_memory_address(input: &str) -> Option<u64> {
         u64::from_str_radix(&input[2..], 16).ok()
     } else {
         None
-    }
-}
-
-fn label_units(bytes: usize) -> (usize, &'static str) {
-    if bytes >> 30 > 0 {
-        return (bytes >> 30, "GiB");
-    } else if bytes >> 20 > 0 {
-        return (bytes >> 20, "MiB");
-    } else if bytes >> 10 > 0 {
-        return (bytes >> 10, "KiB");
-    } else {
-        return (bytes, "Bytes");
     }
 }

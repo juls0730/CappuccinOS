@@ -71,7 +71,7 @@ pub fn init() {
     ALLOCATOR.set_heap(largest_region.base as *mut u8, largest_region.len as usize);
 }
 
-fn label_units(bytes: usize) -> (usize, &'static str) {
+pub fn label_units(bytes: usize) -> (usize, &'static str) {
     if bytes >> 30 > 0 {
         return (bytes >> 30, "GiB");
     } else if bytes >> 20 > 0 {
