@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 limine = "0.1.10"
+
+[profile.release]
+opt-level = 3

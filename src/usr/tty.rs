@@ -1,6 +1,6 @@
 use core::{
-    mem::size_of,
-    sync::atomic::{AtomicU16, AtomicU32, Ordering},
+    cell::UnsafeCell,
+    sync::atomic::{AtomicU16, AtomicU32, AtomicU8, AtomicUsize, Ordering},
 };
 
 use alloc::{
@@ -9,7 +9,15 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use limine::{Framebuffer, NonNullPtr};
+use limine::NonNullPtr;
+
+#[derive(Clone, Copy)]
+struct Framebuffer {
+    width: usize,
+    height: usize,
+    pitch: usize,
+    bpp: usize,
+}
 
 pub struct Cursor {
     cx: AtomicU16,
@@ -18,7 +26,223 @@ pub struct Cursor {
     bg: AtomicU32,
 }
 
+pub struct Console {
+    columns: AtomicU16,
+    rows: AtomicU16,
+    cursor: Cursor,
+    framebuffer_attributes: UnsafeCell<Option<Framebuffer>>,
+    framebuffer: UnsafeCell<Option<crate::sys::mem::Region>>,
+    feature_bits: AtomicU8,
+}
+
+unsafe impl Sync for Console {}
+
+struct ConsoleFeatures {
+    _reserved: [u8; 6],
+    graphical_output: bool,
+}
+
+impl Console {
+    const fn new() -> Self {
+        Self {
+            columns: AtomicU16::new(0),
+            rows: AtomicU16::new(0),
+            cursor: Cursor::new(),
+            framebuffer_attributes: UnsafeCell::new(None),
+            framebuffer: UnsafeCell::new(None),
+            feature_bits: AtomicU8::new(0b0000_0000),
+        }
+    }
+
+    pub fn reinit(&self, back_buffer: Option<crate::sys::mem::Region>) {
+        if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+            .get_response()
+            .get()
+        {
+            if framebuffer_response.framebuffer_count < 1 {
+                return;
+            }
+
+            let framebuffer = &framebuffer_response.framebuffers()[0];
+
+            let columns = (framebuffer.width / 8);
+            let rows = (framebuffer.height / 16);
+            self.columns.swap(columns as u16, Ordering::SeqCst);
+            self.rows.swap(rows as u16, Ordering::SeqCst);
+
+            let framebuffer_size = (framebuffer.height * framebuffer.pitch) as usize;
+            let framebuffer_region = crate::sys::mem::Region {
+                usable: true,
+                base: framebuffer.address.as_ptr().unwrap() as usize,
+                len: framebuffer_size,
+            };
+
+            let attributes = Framebuffer {
+                width: framebuffer.width as usize,
+                height: framebuffer.height as usize,
+                pitch: framebuffer.pitch as usize,
+                bpp: framebuffer.bpp as usize,
+            };
+
+            unsafe { *self.framebuffer.get() = Some(framebuffer_region) };
+
+            unsafe { *self.framebuffer_attributes.get() = Some(attributes) };
+
+            // Enable graphical output
+            let mut new_feature_bits = self.feature_bits.load(Ordering::SeqCst) | 0b0000_0001;
+
+            self.feature_bits.swap(new_feature_bits, Ordering::SeqCst);
+        }
+    }
+
+    fn get_features(&self) -> ConsoleFeatures {
+        let features = self.feature_bits.load(Ordering::SeqCst);
+
+        let graphical_output = (features & 0x01) != 0;
+
+        return ConsoleFeatures {
+            _reserved: [0; 6],
+            graphical_output,
+        };
+    }
+
+    // Uses a stripped down version of ANSI color codes:
+    // \033[FG;BGm
+    pub fn puts(&self, string: &str) {
+        let mut in_escape_sequence = false;
+        let mut color_code_buffer = String::new();
+
+        for (_i, character) in string.chars().enumerate() {
+            if in_escape_sequence {
+                if character == 'm' {
+                    in_escape_sequence = false;
+
+                    let codes: Vec<u8> = color_code_buffer
+                        .split(';')
+                        .filter_map(|code| code.parse().ok())
+                        .collect();
+
+                    for code in codes {
+                        match code {
+                            30..=37 => self.cursor.set_fg(color_to_hex(code - 30)),
+                            40..=47 => self.cursor.set_bg(color_to_hex(code - 40)),
+                            90..=97 => self.cursor.set_fg(color_to_hex(code - 30)),
+                            100..=107 => self.cursor.set_bg(color_to_hex(code - 40)),
+                            _ => {}
+                        }
+                    }
+
+                    color_code_buffer.clear();
+                } else if character.is_ascii_digit() || character == ';' {
+                    color_code_buffer.push(character);
+                } else {
+                    if character == '[' {
+                        // official start of the escape sequence
+                        color_code_buffer.clear();
+                        continue;
+                    }
+
+                    in_escape_sequence = false;
+                    color_code_buffer.clear();
+                }
+
+                continue;
+            }
+
+            if character == '\0' {
+                in_escape_sequence = true;
+                continue;
+            }
+
+            crate::drivers::serial::write_serial(character);
+
+            if character == '\r' {
+                self.cursor
+                    .set_pos(0, self.cursor.cy.load(Ordering::SeqCst));
+                continue;
+            }
+
+            if character == '\n' {
+                if (self.cursor.cy.load(Ordering::SeqCst) + 1) >= self.rows.load(Ordering::SeqCst) {
+                    self.scroll_console();
+
+                    self.cursor
+                        .set_pos(0, self.cursor.cy.load(Ordering::SeqCst));
+                } else {
+                    self.cursor
+                        .set_pos(0, self.cursor.cy.load(Ordering::SeqCst) + 1);
+                }
+            } else {
+                crate::drivers::video::put_char(
+                    character,
+                    self.cursor.cx.load(Ordering::SeqCst),
+                    self.cursor.cy.load(Ordering::SeqCst),
+                    self.cursor.fg.load(Ordering::SeqCst),
+                    self.cursor.bg.load(Ordering::SeqCst),
+                    Some(self.get_framebuffer()),
+                );
+
+                self.cursor.move_right();
+            }
+        }
+
+        self.cursor.set_color(0xbababa, 0x000000);
+    }
+
+    pub fn scroll_console(&self) {
+        let frambuffer_attributes = unsafe { (*self.framebuffer_attributes.get()).unwrap() };
+        let size = (frambuffer_attributes.pitch * frambuffer_attributes.height)
+            / (frambuffer_attributes.bpp / 8);
+
+        let framebuffer = unsafe { (*self.framebuffer.get()).unwrap().base as *mut u32 };
+
+        // size / height = bytes per row of pixels, multiplied by 16 since font height is 16 pixels.
+        let copy_from = ((size as f64 / frambuffer_attributes.height as f64) * 16.0) as usize;
+
+        // Copy the framebuffer minus the top row to the framebuffer,
+        // Then clear the last row with the background color to avoid noise on bare metal
+        // See issue #1
+        unsafe {
+            core::ptr::copy(
+                framebuffer.add(copy_from),
+                framebuffer,
+                size as usize - copy_from,
+            );
+
+            crate::libs::util::memset32(
+                framebuffer.add(size as usize - copy_from) as *mut u32,
+                self.cursor.bg.load(Ordering::SeqCst),
+                copy_from,
+            );
+        }
+    }
+
+    pub fn clear_screen(&self) {
+        self.cursor.set_pos(0, 0);
+
+        crate::drivers::video::fill_screen(
+            self.cursor.bg.load(Ordering::SeqCst),
+            Some(self.get_framebuffer()),
+        );
+    }
+
+    fn get_framebuffer(&self) -> *mut u8 {
+        return unsafe { (*self.framebuffer.get()).unwrap() }.base as *mut u8;
+    }
+}
+
+pub static CONSOLE: Console = Console::new();
+
 impl Cursor {
+    const fn new() -> Self {
+        return Self {
+            cx: AtomicU16::new(0),
+            cy: AtomicU16::new(0),
+            fg: AtomicU32::new(0xbababa),
+            bg: AtomicU32::new(0x000000),
+        };
+    }
+
     fn set_pos(&self, new_cx: u16, new_cy: u16) {
         self.cx.swap(new_cx, Ordering::SeqCst);
         self.cy.swap(new_cy, Ordering::SeqCst);
@@ -33,7 +257,7 @@ impl Cursor {
 
             if self.cx.load(Ordering::SeqCst) == (framebuffer.width / 8) as u16 - 1 {
                 if self.cy.load(Ordering::SeqCst) == (framebuffer.height / 16) as u16 - 1 {
-                    scroll_console(framebuffer);
+                    CONSOLE.scroll_console();
 
                     self.cy
                         .swap(((framebuffer.height / 16) - 1) as u16, Ordering::SeqCst);
@@ -79,13 +303,6 @@ impl Cursor {
     }
 }
 
-pub static CURSOR: Cursor = Cursor {
-    cx: AtomicU16::new(0),
-    cy: AtomicU16::new(0),
-    fg: AtomicU32::new(0xbababa),
-    bg: AtomicU32::new(0x000000),
-};
-
 fn color_to_hex(color: u8) -> u32 {
     match color {
         0 => 0x000000,
@@ -108,128 +325,17 @@ fn color_to_hex(color: u8) -> u32 {
     }
 }
 
-// Uses a stripped down version of ANSI color codes:
-// \033[FG;BGm
-pub fn puts(string: &str) {
-    let mut in_escape_sequence = false;
-    let mut color_code_buffer = String::new();
-
-    for (_i, character) in string.chars().enumerate() {
-        if in_escape_sequence {
-            if character == 'm' {
-                in_escape_sequence = false;
-
-                let codes: Vec<u8> = color_code_buffer
-                    .split(';')
-                    .filter_map(|code| code.parse().ok())
-                    .collect();
-
-                for code in codes {
-                    match code {
-                        30..=37 => CURSOR.set_fg(color_to_hex(code - 30)),
-                        40..=47 => CURSOR.set_bg(color_to_hex(code - 40)),
-                        90..=97 => CURSOR.set_fg(color_to_hex(code - 30)),
-                        100..=107 => CURSOR.set_bg(color_to_hex(code - 40)),
-                        _ => {}
-                    }
-                }
-
-                color_code_buffer.clear();
-            } else if character.is_ascii_digit() || character == ';' {
-                color_code_buffer.push(character);
-            } else {
-                if character == '[' {
-                    // official start of the escape sequence
-                    color_code_buffer.clear();
-                    continue;
-                }
-
-                in_escape_sequence = false;
-                color_code_buffer.clear();
-            }
-
-            continue;
-        }
-
-        if character == '\0' {
-            in_escape_sequence = true;
-            continue;
-        }
-
-        if character == '\n' {
-            if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
-                .get_response()
-                .get()
-            {
-                let framebuffer = &framebuffer_response.framebuffers()[0];
-
-                if (CURSOR.cy.load(Ordering::SeqCst) + 1) >= (framebuffer.height / 16) as u16 {
-                    scroll_console(framebuffer);
-
-                    CURSOR.set_pos(0, CURSOR.cy.load(Ordering::SeqCst));
-                } else {
-                    CURSOR.set_pos(0, CURSOR.cy.load(Ordering::SeqCst) + 1);
-                }
-            }
-        } else {
-            crate::drivers::video::put_char(
-                character,
-                CURSOR.cx.load(Ordering::SeqCst),
-                CURSOR.cy.load(Ordering::SeqCst),
-                CURSOR.fg.load(Ordering::SeqCst),
-                CURSOR.bg.load(Ordering::SeqCst),
-            );
-
-            CURSOR.move_right();
-        }
-    }
-
-    CURSOR.set_color(0xbababa, 0x000000);
-}
-
-pub fn scroll_console(framebuffer: &NonNullPtr<Framebuffer>) {
-    let size = framebuffer.pitch * framebuffer.height;
-
-    // size / height = bytes per row of pixels, multiplied by 16 since font height is 16 pixels.
-    let copy_from = ((size as f64 / framebuffer.height as f64) * 16.0) as usize;
-
-    // Copy the framebuffer minus the top row to the framebuffer,
-    // Then clear the last row with the background color to avoid noise on bare metal
-    // See issue #1
-    unsafe {
-        core::ptr::copy(
-            framebuffer.address.as_ptr().unwrap().add(copy_from),
-            framebuffer.address.as_ptr().unwrap(),
-            size as usize - copy_from,
-        );
-
-        crate::libs::util::memset32(
-            framebuffer
-                .address
-                .as_ptr()
-                .unwrap()
-                .add(size as usize - copy_from) as *mut u32,
-            CURSOR.bg.load(Ordering::SeqCst),
-            copy_from,
-        );
-    }
-}
-
-pub fn clear_screen() {
-    CURSOR.set_pos(0, 0);
-
-    crate::drivers::video::fill_screen(CURSOR.bg.load(Ordering::SeqCst));
-}
-
 #[macro_export]
 macro_rules! println {
-    () => (crate::print!("\n"));
-    ($($arg:tt)*) => (crate::print!("{}\n", &alloc::format!($($arg)*)));
+    () => (crate::print!("\r\n"));
+    ($($arg:tt)*) => (crate::print!("{}\r\n", &alloc::format!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => (crate::usr::tty::puts(&alloc::format!($($arg)*)));
+    ($($arg:tt)*) => (
+			crate::usr::tty::CONSOLE.puts(&alloc::format!($($arg)*));
+		)
 }
 
 pub struct InputBuffer {
@@ -263,7 +369,7 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
     let input_buffer = unsafe { &mut INPUT_BUFFER };
 
     if key.name == "Enter" {
-        puts("\n");
+        CONSOLE.puts("\r\n");
         exec(input_buffer.as_str());
         input_buffer.clear();
         super::shell::prompt();
@@ -272,9 +378,9 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
 
     if key.name == "Backspace" && input_buffer.buffer.len() > 0 {
         input_buffer.pop();
-        CURSOR.move_left();
-        puts(" ");
-        CURSOR.move_left();
+        CONSOLE.cursor.move_left();
+        CONSOLE.puts(" ");
+        CONSOLE.cursor.move_left();
         return;
     }
 
@@ -284,17 +390,17 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
         }
 
         if key.name.ends_with("Left") {
-            CURSOR.move_left();
+            CONSOLE.cursor.move_left();
             return;
         } else {
-            CURSOR.move_right();
+            CONSOLE.cursor.move_left();
             return;
         }
     }
 
     if key.character.is_some() {
         if key.character.unwrap() == '\u{0003}' {
-            puts("^C\n");
+            CONSOLE.puts("^C\n");
             input_buffer.clear();
             super::shell::prompt();
             return;
@@ -303,7 +409,7 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
         let character = key.character.unwrap();
         input_buffer.push(character as u8);
 
-        puts(&format!("{}", key.character.unwrap()));
+        CONSOLE.puts(&format!("{}", key.character.unwrap()));
     }
 }
 
@@ -422,11 +528,6 @@ pub fn exec(command: &str) {
         return;
     }
 
-    if command == "memmap" {
-        crate::sys::mem::memory_map_info();
-        return;
-    }
-
     if command == "memfill" {
         let allocator = &crate::sys::mem::ALLOCATOR;
         let free_mem = allocator.get_free_mem();
@@ -448,8 +549,8 @@ pub fn exec(command: &str) {
             input = args[0].as_str();
         }
 
-        puts(input);
-        puts("\n");
+        CONSOLE.puts(input);
+        CONSOLE.puts("\n");
         return;
     }
 
@@ -479,7 +580,7 @@ pub fn exec(command: &str) {
     }
 
     if command == "clear" {
-        clear_screen();
+        CONSOLE.clear_screen();
         return;
     }
 

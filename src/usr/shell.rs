@@ -125,7 +125,7 @@ pub fn handle_key(mut key: Key) {
 }
 
 pub fn prompt() {
-    super::tty::puts("> ");
+    super::tty::CONSOLE.puts("> ");
 }
 
 fn parse_key(key: Key) -> Key {
