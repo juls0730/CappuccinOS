@@ -31,7 +31,6 @@ pub struct Console {
     cursor: Cursor,
     framebuffer_attributes: UnsafeCell<Option<Framebuffer>>,
     framebuffer: UnsafeCell<Option<crate::sys::mem::Region>>,
-    back_buffer: UnsafeCell<Option<crate::sys::mem::Region>>,
     feature_bits: AtomicU8,
 }
 
@@ -39,7 +38,6 @@ unsafe impl Sync for Console {}
 
 struct ConsoleFeatures {
     _reserved: [u8; 6],
-    double_buffering: bool,
     graphical_output: bool,
 }
 
@@ -51,7 +49,6 @@ impl Console {
             cursor: Cursor::new(),
             framebuffer_attributes: UnsafeCell::new(None),
             framebuffer: UnsafeCell::new(None),
-            back_buffer: UnsafeCell::new(None),
             feature_bits: AtomicU8::new(0b0000_0000),
         }
     }
@@ -92,11 +89,6 @@ impl Console {
             // Enable graphical output
             let mut new_feature_bits = self.feature_bits.load(Ordering::SeqCst) | 0b0000_0001;
 
-            if false && back_buffer.is_some() {
-                unsafe { *self.back_buffer.get() = Some(back_buffer.unwrap()) };
-                new_feature_bits = new_feature_bits | 0b0000_00010;
-            }
-
             self.feature_bits.swap(new_feature_bits, Ordering::SeqCst);
         }
     }
@@ -105,11 +97,9 @@ impl Console {
         let features = self.feature_bits.load(Ordering::SeqCst);
 
         let graphical_output = (features & 0x01) != 0;
-        let double_buffering = (features & 0x02) != 0;
 
         return ConsoleFeatures {
             _reserved: [0; 6],
-            double_buffering,
             graphical_output,
         };
     }
@@ -194,7 +184,6 @@ impl Console {
             }
         }
 
-        self.copy_buffer();
         self.cursor.set_color(0xbababa, 0x000000);
     }
 
@@ -223,8 +212,6 @@ impl Console {
                 copy_from,
             );
         }
-
-        self.copy_buffer();
     }
 
     pub fn clear_screen(&self) {
@@ -234,35 +221,9 @@ impl Console {
             self.cursor.bg.load(Ordering::SeqCst),
             Some(self.get_framebuffer()),
         );
-
-        self.copy_buffer();
-    }
-
-    fn copy_buffer(&self) {
-        if !self.get_features().double_buffering {
-            return;
-        }
-
-        let frambuffer_attributes = unsafe { (*self.framebuffer_attributes.get()).unwrap() };
-        let back_buffer = unsafe { (*self.back_buffer.get()).unwrap() }.base as *mut u32;
-        let framebuffer = unsafe { (*self.framebuffer.get()).unwrap() }.base as *mut u32;
-
-        unsafe {
-            core::ptr::copy(
-                back_buffer,
-                framebuffer,
-                frambuffer_attributes.height * frambuffer_attributes.pitch,
-            )
-        }
     }
 
     fn get_framebuffer(&self) -> *mut u8 {
-        let features = self.get_features();
-
-        if features.double_buffering {
-            return unsafe { (*self.back_buffer.get()).unwrap() }.base as *mut u8;
-        }
-
         return unsafe { (*self.framebuffer.get()).unwrap() }.base as *mut u8;
     }
 }

@@ -141,12 +141,6 @@ pub fn init() {
         largest_region.unwrap().base
     ));
 
-    log_ok(&format!(
-        "Using section with: {} of memory for back buffer at {:#?}",
-        (second_largest_region.unwrap().len),
-        second_largest_region.unwrap().base,
-    ));
-
     ALLOCATOR.set_heap(
         largest_region.unwrap().base as *mut u8,
         largest_region.unwrap().len as usize,
