@@ -156,6 +156,13 @@ pub fn puts(string: &str) {
             continue;
         }
 
+        crate::drivers::serial::write_serial(character);
+
+        if character == '\r' {
+            CURSOR.set_pos(0, CURSOR.cy.load(Ordering::SeqCst));
+            continue;
+        }
+
         if character == '\n' {
             if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
                 .get_response()
@@ -223,13 +230,15 @@ pub fn clear_screen() {
 
 #[macro_export]
 macro_rules! println {
-    () => (crate::print!("\n"));
-    ($($arg:tt)*) => (crate::print!("{}\n", &alloc::format!($($arg)*)));
+    () => (crate::print!("\r\n"));
+    ($($arg:tt)*) => (crate::print!("{}\r\n", &alloc::format!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => (crate::usr::tty::puts(&alloc::format!($($arg)*)));
+    ($($arg:tt)*) => (
+			crate::usr::tty::puts(&alloc::format!($($arg)*));
+		)
 }
 
 pub struct InputBuffer {

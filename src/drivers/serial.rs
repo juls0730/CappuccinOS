@@ -47,7 +47,7 @@ fn is_transmit_empty() -> bool {
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub fn write_serial(a: u8) {
+pub fn write_serial(character: char) {
     while is_transmit_empty() {}
-    outb(PORT, a);
+    outb(PORT, character as u8);
 }
