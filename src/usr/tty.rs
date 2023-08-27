@@ -16,6 +16,7 @@ struct Framebuffer {
     width: usize,
     height: usize,
     pitch: usize,
+    bpp: usize,
 }
 
 pub struct Cursor {
@@ -64,8 +65,8 @@ impl Console {
 
             let framebuffer = &framebuffer_response.framebuffers()[0];
 
-            let columns = (framebuffer.width / 8) - 1;
-            let rows = (framebuffer.height / 16) - 1;
+            let columns = (framebuffer.width / 8);
+            let rows = (framebuffer.height / 16);
             self.columns.swap(columns as u16, Ordering::SeqCst);
             self.rows.swap(rows as u16, Ordering::SeqCst);
 
@@ -80,6 +81,7 @@ impl Console {
                 width: framebuffer.width as usize,
                 height: framebuffer.height as usize,
                 pitch: framebuffer.pitch as usize,
+                bpp: framebuffer.bpp as usize,
             };
 
             unsafe { *self.framebuffer.get() = Some(framebuffer_region) };
@@ -189,7 +191,8 @@ impl Console {
 
     pub fn scroll_console(&self) {
         let frambuffer_attributes = unsafe { (*self.framebuffer_attributes.get()).unwrap() };
-        let size = frambuffer_attributes.height * frambuffer_attributes.pitch;
+        let size = (frambuffer_attributes.pitch * frambuffer_attributes.height)
+            / (frambuffer_attributes.bpp / 8);
 
         let framebuffer = unsafe { (*self.framebuffer.get()).unwrap().base as *mut u32 };
 
@@ -366,7 +369,7 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
     let input_buffer = unsafe { &mut INPUT_BUFFER };
 
     if key.name == "Enter" {
-        CONSOLE.puts("\n");
+        CONSOLE.puts("\r\n");
         exec(input_buffer.as_str());
         input_buffer.clear();
         super::shell::prompt();
