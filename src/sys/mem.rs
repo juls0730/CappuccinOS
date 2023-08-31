@@ -1,7 +1,7 @@
 use alloc::{format, vec::Vec};
 use limine::{MemmapEntry, MemoryMapEntryType};
 
-use crate::libs::logging::{log_info, log_ok};
+use crate::libs::logging::log_ok;
 
 use super::allocator::BuddyAllocator;
 
@@ -89,35 +89,38 @@ fn find_largest_memory_region() -> (Option<Region>, Option<Region>) {
     let mut heap_region = largest_region.unwrap();
     let min_heap_size = 0x0008_0000;
 
-    if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+    let framebuffer_response = crate::drivers::video::FRAMEBUFFER_REQUEST
         .get_response()
-        .get()
-    {
-        if framebuffer_response.framebuffer_count < 1 {
-            return (Some(heap_region), None);
-        }
+        .get();
 
-        let framebuffer = &framebuffer_response.framebuffers()[0];
-        let framebuffer_size = framebuffer.height * framebuffer.pitch;
-
-        back_buffer_region.len = framebuffer_size as usize;
-
-        if heap_region.base == back_buffer_region.base {
-            // Heap section is located at the same area as the back buffer region
-            // Check if we can safely shrink the heap section
-            let shrunk_heap = heap_region.len - framebuffer_size as usize;
-            if (shrunk_heap) >= min_heap_size {
-                heap_region.len = shrunk_heap;
-                back_buffer_region.base += shrunk_heap;
-            } else {
-                return (Some(heap_region), None);
-            }
-        }
-
-        return (Some(heap_region), Some(back_buffer_region));
+    if framebuffer_response.is_none() {
+        return (Some(heap_region), None);
     }
 
-    return (Some(heap_region), None);
+    // eww, variable redeclaration
+    let framebuffer_response = framebuffer_response.unwrap();
+    if framebuffer_response.framebuffer_count < 1 {
+        return (Some(heap_region), None);
+    }
+
+    let framebuffer = &framebuffer_response.framebuffers()[0];
+    let framebuffer_size = framebuffer.height * framebuffer.pitch;
+
+    back_buffer_region.len = framebuffer_size as usize;
+
+    if heap_region.base == back_buffer_region.base {
+        // Heap section is located at the same area as the back buffer region
+        // Check if we can safely shrink the heap section
+        let shrunk_heap = heap_region.len - framebuffer_size as usize;
+        if (shrunk_heap) >= min_heap_size {
+            heap_region.len = shrunk_heap;
+            back_buffer_region.base += shrunk_heap;
+        } else {
+            return (Some(heap_region), None);
+        }
+    }
+
+    return (Some(heap_region), Some(back_buffer_region));
 }
 
 fn memory_section_is_usable(entry: &MemmapEntry) -> bool {
@@ -136,7 +139,7 @@ pub fn init() {
     }
 
     log_ok(&format!(
-        "Using largest section with: {} of memory for heap at {:?}",
+        "Using largest section with: {} bytes of memory for heap at {:#x}",
         (largest_region.unwrap().len),
         largest_region.unwrap().base
     ));

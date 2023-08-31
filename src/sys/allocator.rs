@@ -1,14 +1,15 @@
 // Original code from: https://github.com/DrChat/buddyalloc/blob/master/src/heap.rs
 // But I made it ~~much worse~~ *better* by making it GlobalAlloc compatible
-// By using UnsafeCell and dereferencing all the pointers, I was able to remove all the mut's
-// In the original code.
+// By using A custom Mutex implementation (which also sucks) and dereferencing all the pointers,
+// I was able to remove all the mut's In the original code.
 
 use core::alloc::{GlobalAlloc, Layout};
-use core::cell::UnsafeCell;
 use core::cmp::{max, min};
 use core::ptr;
 use core::sync::atomic::Ordering::SeqCst;
 use core::sync::atomic::{AtomicPtr, AtomicU8, AtomicUsize};
+
+use crate::libs::mutex::Mutex;
 
 const fn log2(num: usize) -> u8 {
     let mut temp = num;
@@ -40,12 +41,10 @@ impl FreeBlock {
 pub struct BuddyAllocator {
     heap_start: AtomicPtr<u8>,
     heap_size: AtomicUsize,
-    pub free_lists: UnsafeCell<[*mut FreeBlock; HEAP_BLOCKS]>,
+    pub free_lists: Mutex<[*mut FreeBlock; HEAP_BLOCKS]>,
     min_block_size: AtomicUsize,
     min_block_size_log2: AtomicU8,
 }
-
-unsafe impl Sync for BuddyAllocator {}
 
 impl BuddyAllocator {
     pub const fn new_unchecked(heap_start: *mut u8, heap_size: usize) -> Self {
@@ -55,7 +54,7 @@ impl BuddyAllocator {
 
         free_lists_buf[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
 
-        let free_lists: UnsafeCell<[*mut FreeBlock; 16]> = UnsafeCell::new(free_lists_buf);
+        let free_lists: Mutex<[*mut FreeBlock; 16]> = Mutex::new(free_lists_buf);
 
         let heap_start = AtomicPtr::new(heap_start as *mut u8);
         let heap_size = AtomicUsize::new(heap_size);
@@ -80,9 +79,9 @@ impl BuddyAllocator {
 
         free_lists_buf[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
 
-        let free_lists: UnsafeCell<[*mut FreeBlock; 16]> = UnsafeCell::new(free_lists_buf);
+        let free_lists: Mutex<[*mut FreeBlock; 16]> = Mutex::new(free_lists_buf);
 
-        unsafe { (*self.free_lists.get()) = *free_lists.get() }
+        (*self.free_lists.lock().write()) = *free_lists.lock().read();
         self.heap_start.swap(heap_start, SeqCst);
         self.heap_size.swap(heap_size, SeqCst);
     }
@@ -122,31 +121,33 @@ impl BuddyAllocator {
     }
 
     fn free_list_pop(&self, order: usize) -> Option<*mut u8> {
-        let candidate = unsafe { (*self.free_lists.get())[order] };
+        let candidate = (*self.free_lists.lock().read())[order];
 
         if candidate.is_null() {
             return None;
         }
 
-        if order != unsafe { (*self.free_lists.get()).len() } - 1 {
-            unsafe { (*self.free_lists.get())[order] = (*candidate).next };
+        if order != self.free_lists.lock().read().len() - 1 {
+            (*self.free_lists.lock().write())[order] = unsafe { (*candidate).next };
         } else {
-            unsafe { (*self.free_lists.get())[order] = ptr::null_mut() };
+            (*self.free_lists.lock().write())[order] = ptr::null_mut();
         }
 
         return Some(candidate as *mut u8);
     }
 
-    unsafe fn free_list_insert(&self, order: usize, block: *mut u8) {
+    fn free_list_insert(&self, order: usize, block: *mut u8) {
         let free_block_ptr = block as *mut FreeBlock;
-        *free_block_ptr = FreeBlock::new(unsafe { (*self.free_lists.get())[order] });
-        unsafe { (*self.free_lists.get())[order] = free_block_ptr };
+
+        unsafe { *free_block_ptr = FreeBlock::new((*self.free_lists.lock().read())[order]) };
+
+        (*self.free_lists.lock().write())[order] = free_block_ptr;
     }
 
     fn free_list_remove(&self, order: usize, block: *mut u8) -> bool {
         let block_ptr = block as *mut FreeBlock;
 
-        let mut checking: &mut *mut FreeBlock = unsafe { &mut (*self.free_lists.get())[order] };
+        let mut checking: &mut *mut FreeBlock = &mut (*self.free_lists.lock().write())[order];
 
         unsafe {
             while !(*checking).is_null() {
@@ -161,14 +162,14 @@ impl BuddyAllocator {
         return false;
     }
 
-    unsafe fn split_free_block(&self, block: *mut u8, mut order: usize, order_needed: usize) {
+    fn split_free_block(&self, block: *mut u8, mut order: usize, order_needed: usize) {
         let mut size_to_split = self.order_size(order);
 
         while order > order_needed {
             size_to_split >>= 1;
             order -= 1;
 
-            let split = block.add(size_to_split);
+            let split = unsafe { block.add(size_to_split) };
             self.free_list_insert(order, split);
         }
     }
@@ -193,8 +194,8 @@ impl BuddyAllocator {
         let mut free_mem = 0;
 
         unsafe {
-            for order in 0..(*self.free_lists.get()).len() {
-                let mut block = (*self.free_lists.get())[order];
+            for order in 0..self.free_lists.lock().read().len() {
+                let mut block = (*self.free_lists.lock().write())[order];
 
                 while !block.is_null() {
                     free_mem += self.order_size(order);
@@ -214,10 +215,10 @@ impl BuddyAllocator {
 unsafe impl GlobalAlloc for BuddyAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if let Some(order_needed) = self.allocation_order(layout.size(), layout.align()) {
-            for order in order_needed..unsafe { (*self.free_lists.get()).len() } {
+            for order in order_needed..self.free_lists.lock().read().len() {
                 if let Some(block) = self.free_list_pop(order) {
                     if order > order_needed {
-                        unsafe { self.split_free_block(block, order, order_needed) };
+                        self.split_free_block(block, order, order_needed);
                     }
 
                     return block;
@@ -234,7 +235,7 @@ unsafe impl GlobalAlloc for BuddyAllocator {
             .expect("Tried to dispose of invalid block");
 
         let mut block = ptr;
-        for order in initial_order..unsafe { (*self.free_lists.get()).len() } {
+        for order in initial_order..self.free_lists.lock().read().len() {
             if let Some(buddy) = self.buddy(order, block) {
                 if self.free_list_remove(order, block) {
                     block = min(block, buddy);

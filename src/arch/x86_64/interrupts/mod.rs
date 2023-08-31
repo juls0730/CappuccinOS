@@ -1,6 +1,6 @@
 mod exceptions;
 
-use crate::arch::x86_common::pic::ChainedPics;
+use crate::{arch::x86_common::pic::ChainedPics, libs::mutex::Mutex};
 
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
@@ -20,15 +20,17 @@ struct IdtPtr {
     base: u64,
 }
 
-static mut IDT: [IdtEntry; 256] = [IdtEntry {
-    base_lo: 0,
-    sel: 0,
-    ist: 0,
-    always0: 0,
-    flags: 0,
-    base_hi: 0,
-    base_mid: 0,
-}; 256];
+static IDT: Mutex<[IdtEntry; 256]> = Mutex::new(
+    [IdtEntry {
+        base_lo: 0,
+        sel: 0,
+        ist: 0,
+        always0: 0,
+        flags: 0,
+        base_hi: 0,
+        base_mid: 0,
+    }; 256],
+);
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
@@ -46,39 +48,41 @@ impl InterruptIndex {
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
-pub static mut PICS: ChainedPics = ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET);
+pub static PICS: Mutex<ChainedPics> = Mutex::new(ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET));
 
 static mut IDT_PTR: IdtPtr = IdtPtr { limit: 0, base: 0 };
 
 pub fn idt_set_gate(num: u8, function_ptr: u64, sel: u16, flags: u8) {
     let base = function_ptr;
-    unsafe {
-        IDT[num as usize] = IdtEntry {
-            base_lo: (base & 0xFFFF) as u16,
-            base_mid: ((base >> 16) & 0xFFFF) as u16,
-            base_hi: ((base >> 32) & 0xFFFFFFFF) as u32,
-            sel,
-            ist: 0,
-            always0: 0,
-            flags,
-        };
-    }
+    IDT.lock().write()[num as usize] = IdtEntry {
+        base_lo: (base & 0xFFFF) as u16,
+        base_mid: ((base >> 16) & 0xFFFF) as u16,
+        base_hi: ((base >> 32) & 0xFFFFFFFF) as u32,
+        sel,
+        ist: 0,
+        always0: 0,
+        flags,
+    };
 }
 
 extern "x86-interrupt" fn timer_handler() {
     // crate::usr::tty::puts(".");
-    unsafe {
-        PICS.notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
-    }
+    PICS.lock()
+        .write()
+        .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
 }
 
 fn idt_init() {
     unsafe {
         let idt_size = core::mem::size_of::<IdtEntry>() * 256;
         IDT_PTR.limit = idt_size as u16 - 1;
-        IDT_PTR.base = IDT.as_ptr() as u64;
+        IDT_PTR.base = IDT.lock().read().as_ptr() as u64;
 
-        core::ptr::write_bytes(IDT.as_mut_ptr() as *mut core::ffi::c_void, 0, idt_size);
+        core::ptr::write_bytes(
+            IDT.lock().write().as_mut_ptr() as *mut core::ffi::c_void,
+            0,
+            idt_size,
+        );
 
         // Set every interrupt to the default interrupt handler
         for num in 0..(idt_size) {
@@ -144,8 +148,8 @@ pub extern "C" fn syscall_handler(rdi: u64, rsi: u64, rdx: u64, rcx: u64) {
 pub fn init() {
     idt_init();
 
+    PICS.lock().write().initialize();
     unsafe {
-        PICS.initialize();
         core::arch::asm!("sti");
     }
 }

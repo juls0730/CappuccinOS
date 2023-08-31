@@ -1,7 +1,4 @@
-use core::{
-    cell::UnsafeCell,
-    sync::atomic::{AtomicU16, AtomicU32, AtomicU8, AtomicUsize, Ordering},
-};
+use core::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 
 use alloc::{
     alloc::{alloc, dealloc},
@@ -9,7 +6,8 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use limine::NonNullPtr;
+
+use crate::libs::{bit_manipulator::BitManipulator, mutex::Mutex};
 
 #[derive(Clone, Copy)]
 struct Framebuffer {
@@ -30,12 +28,10 @@ pub struct Console {
     columns: AtomicU16,
     rows: AtomicU16,
     cursor: Cursor,
-    framebuffer_attributes: UnsafeCell<Option<Framebuffer>>,
-    framebuffer: UnsafeCell<Option<crate::sys::mem::Region>>,
-    feature_bits: AtomicU8,
+    framebuffer_attributes: Mutex<Option<Framebuffer>>,
+    framebuffer: Mutex<Option<crate::sys::mem::Region>>,
+    feature_bits: Mutex<BitManipulator<u8>>,
 }
-
-unsafe impl Sync for Console {}
 
 struct ConsoleFeatures {
     _reserved: [u8; 6],
@@ -48,57 +44,59 @@ impl Console {
             columns: AtomicU16::new(0),
             rows: AtomicU16::new(0),
             cursor: Cursor::new(),
-            framebuffer_attributes: UnsafeCell::new(None),
-            framebuffer: UnsafeCell::new(None),
-            feature_bits: AtomicU8::new(0b0000_0000),
+            framebuffer_attributes: Mutex::new(None),
+            framebuffer: Mutex::new(None),
+            feature_bits: Mutex::new(BitManipulator::<u8>::new()),
         }
     }
 
     pub fn reinit(&self, back_buffer: Option<crate::sys::mem::Region>) {
-        if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+        let framebuffer_response = crate::drivers::video::FRAMEBUFFER_REQUEST
             .get_response()
-            .get()
-        {
-            if framebuffer_response.framebuffer_count < 1 {
-                return;
-            }
+            .get();
 
-            let framebuffer = &framebuffer_response.framebuffers()[0];
-
-            let columns = (framebuffer.width / 8);
-            let rows = (framebuffer.height / 16);
-            self.columns.swap(columns as u16, Ordering::SeqCst);
-            self.rows.swap(rows as u16, Ordering::SeqCst);
-
-            let framebuffer_size = (framebuffer.height * framebuffer.pitch) as usize;
-            let framebuffer_region = crate::sys::mem::Region {
-                usable: true,
-                base: framebuffer.address.as_ptr().unwrap() as usize,
-                len: framebuffer_size,
-            };
-
-            let attributes = Framebuffer {
-                width: framebuffer.width as usize,
-                height: framebuffer.height as usize,
-                pitch: framebuffer.pitch as usize,
-                bpp: framebuffer.bpp as usize,
-            };
-
-            unsafe { *self.framebuffer.get() = Some(framebuffer_region) };
-
-            unsafe { *self.framebuffer_attributes.get() = Some(attributes) };
-
-            // Enable graphical output
-            let mut new_feature_bits = self.feature_bits.load(Ordering::SeqCst) | 0b0000_0001;
-
-            self.feature_bits.swap(new_feature_bits, Ordering::SeqCst);
+        if framebuffer_response.is_none() {
+            return;
         }
+
+        // eww, variable redeclaration
+        let framebuffer_response = framebuffer_response.unwrap();
+
+        if framebuffer_response.framebuffer_count < 1 {
+            return;
+        }
+
+        let framebuffer = &framebuffer_response.framebuffers()[0];
+
+        let columns = (framebuffer.width / 8);
+        let rows = (framebuffer.height / 16);
+        self.columns.swap(columns as u16, Ordering::SeqCst);
+        self.rows.swap(rows as u16, Ordering::SeqCst);
+
+        let framebuffer_size = (framebuffer.height * framebuffer.pitch) as usize;
+        let framebuffer_region = crate::sys::mem::Region {
+            usable: true,
+            base: framebuffer.address.as_ptr().unwrap() as usize,
+            len: framebuffer_size,
+        };
+
+        let attributes = Framebuffer {
+            width: framebuffer.width as usize,
+            height: framebuffer.height as usize,
+            pitch: framebuffer.pitch as usize,
+            bpp: framebuffer.bpp as usize,
+        };
+
+        (*self.framebuffer.lock().write()) = Some(framebuffer_region);
+
+        (*self.framebuffer_attributes.lock().write()) = Some(attributes);
+
+        // Enable graphical output
+        (*self.feature_bits.lock().write()) |= 0b0000_0001;
     }
 
     fn get_features(&self) -> ConsoleFeatures {
-        let features = self.feature_bits.load(Ordering::SeqCst);
-
-        let graphical_output = (features & 0x01) != 0;
+        let graphical_output = ((*self.feature_bits.lock().read()).get() & 0x01) != 0;
 
         return ConsoleFeatures {
             _reserved: [0; 6],
@@ -156,6 +154,26 @@ impl Console {
 
             crate::drivers::serial::write_serial(character);
 
+            if !CONSOLE.get_features().graphical_output {
+                // No graphical output, so to avoid errors, return after sending serial
+                return;
+            }
+
+            if character == '\u{0008}' {
+                CONSOLE.cursor.move_left();
+                crate::drivers::serial::write_serial(' ');
+                crate::drivers::serial::write_serial(character);
+                crate::drivers::video::put_char(
+                    ' ',
+                    self.cursor.cx.load(Ordering::SeqCst),
+                    self.cursor.cy.load(Ordering::SeqCst),
+                    self.cursor.fg.load(Ordering::SeqCst),
+                    self.cursor.bg.load(Ordering::SeqCst),
+                    Some(self.get_framebuffer()),
+                );
+                continue;
+            }
+
             if character == '\r' {
                 self.cursor
                     .set_pos(0, self.cursor.cy.load(Ordering::SeqCst));
@@ -190,11 +208,12 @@ impl Console {
     }
 
     pub fn scroll_console(&self) {
-        let frambuffer_attributes = unsafe { (*self.framebuffer_attributes.get()).unwrap() };
+        let frambuffer_attributes = (*self.framebuffer_attributes.lock().read()).unwrap();
+
         let size = (frambuffer_attributes.pitch * frambuffer_attributes.height)
             / (frambuffer_attributes.bpp / 8);
 
-        let framebuffer = unsafe { (*self.framebuffer.get()).unwrap().base as *mut u32 };
+        let framebuffer = (*self.framebuffer.lock().read()).unwrap().base as *mut u32;
 
         // size / height = bytes per row of pixels, multiplied by 16 since font height is 16 pixels.
         let copy_from = ((size as f64 / frambuffer_attributes.height as f64) * 16.0) as usize;
@@ -227,7 +246,8 @@ impl Console {
     }
 
     fn get_framebuffer(&self) -> *mut u8 {
-        return unsafe { (*self.framebuffer.get()).unwrap() }.base as *mut u8;
+        let frambuffer_guard = self.framebuffer.lock().read();
+        return (*frambuffer_guard).unwrap().base as *mut u8;
     }
 }
 
@@ -249,43 +269,53 @@ impl Cursor {
     }
 
     fn move_right(&self) {
-        if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+        let framebuffer_response = crate::drivers::video::FRAMEBUFFER_REQUEST
             .get_response()
-            .get()
-        {
-            let framebuffer = &framebuffer_response.framebuffers()[0];
+            .get();
 
-            if self.cx.load(Ordering::SeqCst) == (framebuffer.width / 8) as u16 - 1 {
-                if self.cy.load(Ordering::SeqCst) == (framebuffer.height / 16) as u16 - 1 {
-                    CONSOLE.scroll_console();
+        if framebuffer_response.is_none() {
+            return;
+        }
 
-                    self.cy
-                        .swap(((framebuffer.height / 16) - 1) as u16, Ordering::SeqCst);
-                    self.cx.swap(0, Ordering::SeqCst);
-                } else {
-                    self.cy.fetch_add(1, Ordering::SeqCst);
-                    self.cx.swap(0, Ordering::SeqCst);
-                }
+        // eww, variable redeclaration
+        let framebuffer_response = framebuffer_response.unwrap();
+        let framebuffer = &framebuffer_response.framebuffers()[0];
+
+        if self.cx.load(Ordering::SeqCst) == (framebuffer.width / 8) as u16 - 1 {
+            if self.cy.load(Ordering::SeqCst) == (framebuffer.height / 16) as u16 - 1 {
+                CONSOLE.scroll_console();
+
+                self.cy
+                    .swap(((framebuffer.height / 16) - 1) as u16, Ordering::SeqCst);
+                self.cx.swap(0, Ordering::SeqCst);
             } else {
-                self.cx.fetch_add(1, Ordering::SeqCst);
+                self.cy.fetch_add(1, Ordering::SeqCst);
+                self.cx.swap(0, Ordering::SeqCst);
             }
+        } else {
+            self.cx.fetch_add(1, Ordering::SeqCst);
         }
     }
 
     fn move_left(&self) {
-        if let Some(framebuffer_response) = crate::drivers::video::FRAMEBUFFER_REQUEST
+        let framebuffer_response = crate::drivers::video::FRAMEBUFFER_REQUEST
             .get_response()
-            .get()
-        {
-            let framebuffer = &framebuffer_response.framebuffers()[0];
+            .get();
 
-            if self.cx.load(Ordering::SeqCst) == 0 {
-                self.cx
-                    .swap((framebuffer.width / 8) as u16 - 1, Ordering::SeqCst);
-                self.cy.fetch_sub(1, Ordering::SeqCst);
-            } else {
-                self.cx.fetch_sub(1, Ordering::SeqCst);
-            }
+        if framebuffer_response.is_none() {
+            return;
+        }
+
+        // eww, variable redeclaration
+        let framebuffer_response = framebuffer_response.unwrap();
+        let framebuffer = &framebuffer_response.framebuffers()[0];
+
+        if self.cx.load(Ordering::SeqCst) == 0 {
+            self.cx
+                .swap((framebuffer.width / 8) as u16 - 1, Ordering::SeqCst);
+            self.cy.fetch_sub(1, Ordering::SeqCst);
+        } else {
+            self.cx.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
@@ -363,24 +393,20 @@ impl InputBuffer {
     }
 }
 
-static mut INPUT_BUFFER: InputBuffer = InputBuffer { buffer: Vec::new() };
+static INPUT_BUFFER: Mutex<InputBuffer> = Mutex::new(InputBuffer { buffer: Vec::new() });
 
 pub fn handle_key(key: crate::drivers::keyboard::Key) {
-    let input_buffer = unsafe { &mut INPUT_BUFFER };
+    let input_buffer = INPUT_BUFFER.lock().write();
 
-    if key.name == "Enter" {
+    if !key.pressed {
+        return;
+    }
+
+    if key.character == Some('\n') {
         CONSOLE.puts("\r\n");
         exec(input_buffer.as_str());
         input_buffer.clear();
         super::shell::prompt();
-        return;
-    }
-
-    if key.name == "Backspace" && input_buffer.buffer.len() > 0 {
-        input_buffer.pop();
-        CONSOLE.cursor.move_left();
-        CONSOLE.puts(" ");
-        CONSOLE.cursor.move_left();
         return;
     }
 
@@ -398,19 +424,31 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
         }
     }
 
-    if key.character.is_some() {
-        if key.character.unwrap() == '\u{0003}' {
-            CONSOLE.puts("^C\n");
-            input_buffer.clear();
-            super::shell::prompt();
+    if key.character.is_none() {
+        return;
+    }
+
+    if key.character.unwrap() == '\u{0003}' {
+        CONSOLE.puts("^C\r\n");
+        input_buffer.clear();
+        super::shell::prompt();
+        return;
+    }
+
+    if key.character.unwrap() == '\u{0008}' {
+        if input_buffer.buffer.len() == 0 {
             return;
         }
 
-        let character = key.character.unwrap();
-        input_buffer.push(character as u8);
-
-        CONSOLE.puts(&format!("{}", key.character.unwrap()));
+        input_buffer.pop();
+        CONSOLE.puts("\u{0008}");
+        return;
     }
+
+    let character = key.character.unwrap();
+    input_buffer.push(character as u8);
+
+    CONSOLE.puts(&format!("{}", key.character.unwrap()));
 }
 
 pub fn exec(command: &str) {

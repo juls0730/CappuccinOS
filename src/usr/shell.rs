@@ -1,8 +1,9 @@
-use core::sync::atomic::{AtomicU8, Ordering};
-
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::drivers::keyboard::set_leds;
-use crate::drivers::keyboard::Key;
+use crate::{
+    drivers::keyboard::Key,
+    libs::{bit_manipulator::BitManipulator, mutex::Mutex},
+};
 
 struct ModStatus {
     pub win: bool,      // first bit
@@ -43,35 +44,35 @@ impl ModStatus {
 }
 
 struct ModStatusBits {
-    status: AtomicU8,
-    led_status: AtomicU8,
+    status: Mutex<BitManipulator<u8>>,
+    led_status: Mutex<BitManipulator<u8>>,
 }
 
 impl ModStatusBits {
     const fn new() -> Self {
         return Self {
-            status: AtomicU8::new(0),
-            led_status: AtomicU8::new(0),
+            status: Mutex::new(BitManipulator::<u8>::new()),
+            led_status: Mutex::new(BitManipulator::<u8>::new()),
         };
     }
 
     fn get_status(&self) -> ModStatus {
-        let value = self.status.load(Ordering::SeqCst);
+        let status = self.status.lock().read();
 
         return ModStatus {
-            win: (value & 0b0000_0001) != 0,
-            ctrl: (value & 0b0000_0010) != 0,
-            alt: (value & 0b0000_0100) != 0,
-            shift: (value & 0b0000_1000) != 0,
-            caps: (value & 0b0001_0000) != 0,
-            num_lock: (value & 0b0010_0000) != 0,
-            scr_lock: (value & 0b0100_0000) != 0,
+            win: status.extract_bit(0),
+            ctrl: status.extract_bit(1),
+            alt: status.extract_bit(2),
+            shift: status.extract_bit(3),
+            caps: status.extract_bit(4),
+            num_lock: status.extract_bit(5),
+            scr_lock: status.extract_bit(6),
         };
     }
 
     fn set_modifier_key(&self, key: &str, status: bool) {
+        let mut led_status = *self.led_status.lock().write();
         let mut mod_status = self.get_status();
-        let mut new_led_status = self.led_status.load(Ordering::SeqCst);
 
         match key {
             "win" => mod_status.win = status,
@@ -79,15 +80,15 @@ impl ModStatusBits {
             "alt" => mod_status.alt = status,
             "shift" => mod_status.shift = status,
             "caps" => {
-                new_led_status ^= 0b00000100;
+                led_status ^= 0b00000100;
                 mod_status.caps = status
             }
             "num_lock" => {
-                new_led_status ^= 0b00000010;
+                led_status ^= 0b00000010;
                 mod_status.num_lock = status
             }
             "scr_lock" => {
-                new_led_status ^= 0b00000100;
+                led_status ^= 0b00000100;
                 mod_status.scr_lock = status
             }
             _ => return,
@@ -95,11 +96,10 @@ impl ModStatusBits {
 
         // set Keyboard led (caps, num lock, scroll lock)
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        set_leds(new_led_status);
-        self.led_status.store(new_led_status, Ordering::SeqCst);
+        set_leds(led_status.get());
 
         let new_value = mod_status.to_byte();
-        self.status.store(new_value, Ordering::SeqCst);
+        self.status.lock().write().set(new_value);
     }
 }
 
@@ -113,7 +113,7 @@ pub fn init_shell() {
 }
 
 pub fn handle_key(mut key: Key) {
-    if key.mod_key {
+    if key.name.len() > 1 && key.character.is_none() {
         parse_mod_key(&key);
     }
 
@@ -128,41 +128,35 @@ pub fn prompt() {
     super::tty::CONSOLE.puts("> ");
 }
 
-fn parse_key(key: Key) -> Key {
+fn parse_key(mut key: Key) -> Key {
     let mod_status = MOD_STATUS.get_status();
-    let mut new_key = Key {
-        mod_key: false,
-        pressed: key.pressed,
-        name: key.name,
-        character: key.character,
-    };
 
     if key.character.is_none() {
         panic!("Key passed into parse_key is not a character key!");
     }
 
     if mod_status.num_lock && key.name.starts_with("Keypad") {
-        new_key = parse_keypad_keys(key);
-        return new_key;
+        key = parse_keypad_keys(key);
+        return key;
     }
 
     if mod_status.ctrl {
-        new_key.character = Some(parse_unicode_keys(&key));
-        return new_key;
+        key.character = Some(parse_unicode_keys(&key));
+        return key;
     }
 
     if key.character.unwrap().is_alphabetic() && (mod_status.shift ^ mod_status.caps) {
-        new_key.character = Some(key.character.unwrap().to_ascii_uppercase());
-        return new_key;
+        key.character = Some(key.character.unwrap().to_ascii_uppercase());
+        return key;
     }
 
     if mod_status.shift && !key.name.starts_with("Keypad") {
-        new_key.character = Some(capitalize_non_alphabetical(key.character.unwrap()));
-        return new_key;
+        key.character = Some(capitalize_non_alphabetical(key.character.unwrap()));
+        return key;
     }
 
-    new_key.character = Some(key.character.unwrap());
-    return new_key;
+    key.character = Some(key.character.unwrap());
+    return key;
 }
 
 fn capitalize_non_alphabetical(character: char) -> char {
@@ -227,82 +221,44 @@ fn parse_mod_key(key: &Key) {
     }
 }
 
-fn parse_keypad_keys(key: Key) -> Key {
-    let mut new_key = Key {
-        mod_key: false,
-        pressed: key.pressed,
-        name: key.name,
-        character: key.character,
-    };
-
+fn parse_keypad_keys(mut key: Key) -> Key {
     match key.character.unwrap() {
         '7' => {
-            new_key.name = "Home";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "Home";
         }
         '8' => {
-            new_key.name = "CurUp";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "CurUp";
         }
         '9' => {
-            new_key.name = "PgUp";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "PgUp";
         }
         '4' => {
-            new_key.name = "CurLeft";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "CurLeft";
         }
-        '5' => {
-            new_key.character = None;
-
-            return new_key;
-        }
+        // 5 has no special function
         '6' => {
-            new_key.name = "CurRight";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "CurRight";
         }
         '1' => {
-            new_key.name = "End";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "End";
         }
         '2' => {
-            new_key.name = "CurDown";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "CurDown";
         }
         '3' => {
-            new_key.name = "PgDown";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "PgDown";
         }
         '0' => {
-            new_key.name = "Insert";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "Insert";
         }
         '.' => {
-            new_key.name = "Del";
-            new_key.character = None;
-
-            return new_key;
+            key.name = "Del";
         }
-        _ => new_key,
-    }
+        _ => {}
+    };
+
+    key.character = None;
+    return key;
 }
 
 // bad name

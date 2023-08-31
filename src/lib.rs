@@ -1,6 +1,7 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
 #![feature(naked_functions)]
+#![feature(const_trait_impl)]
 
 extern crate alloc;
 

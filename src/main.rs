@@ -1,5 +1,6 @@
 #![feature(abi_x86_interrupt)]
 #![feature(naked_functions)]
+#![feature(const_trait_impl)]
 #![no_std]
 #![no_main]
 
