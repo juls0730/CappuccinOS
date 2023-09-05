@@ -11,6 +11,7 @@ pub struct Mutex<T: ?Sized> {
 unsafe impl<T: ?Sized> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
+    #[inline]
     pub const fn new(data: T) -> Self {
         return Self {
             locked: AtomicBool::new(false),

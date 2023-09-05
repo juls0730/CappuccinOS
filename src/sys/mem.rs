@@ -1,8 +1,6 @@
 use alloc::{format, vec::Vec};
 use limine::{MemmapEntry, MemoryMapEntryType};
 
-use crate::libs::logging::log_ok;
-
 use super::allocator::BuddyAllocator;
 
 static MEMMAP_REQUEST: limine::MemmapRequest = limine::MemmapRequest::new(0);
@@ -123,6 +121,7 @@ fn find_largest_memory_region() -> (Option<Region>, Option<Region>) {
     return (Some(heap_region), Some(back_buffer_region));
 }
 
+#[inline]
 fn memory_section_is_usable(entry: &MemmapEntry) -> bool {
     return entry.typ == MemoryMapEntryType::Usable
         || entry.typ == MemoryMapEntryType::BootloaderReclaimable
@@ -138,11 +137,11 @@ pub fn init() {
         panic!("Suitable memory regions not found!");
     }
 
-    log_ok(&format!(
+    crate::log_ok!(
         "Using largest section with: {} bytes of memory for heap at {:#x}",
         (largest_region.unwrap().len),
         largest_region.unwrap().base
-    ));
+    );
 
     ALLOCATOR.set_heap(
         largest_region.unwrap().base as *mut u8,

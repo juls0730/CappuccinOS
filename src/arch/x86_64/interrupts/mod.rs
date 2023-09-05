@@ -112,7 +112,7 @@ fn idt_init() {
             in(reg) &IDT_PTR
         );
 
-        crate::libs::logging::log_ok("Interrupt Descriptor Table");
+        crate::log_ok!("Interrupt Descriptor Table");
     }
 }
 

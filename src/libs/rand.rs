@@ -5,6 +5,7 @@ pub struct Random {
 }
 
 impl Random {
+    #[inline]
     pub fn new() -> Random {
         Random {
             a: 25214903917,

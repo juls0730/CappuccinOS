@@ -57,6 +57,8 @@ Run CappuccinOS with QEMU:
 make run
 ```
 
+If you would like to target another architecture other than x86_64, set the `ARCH` variable to the a supported architecture. CappuccinOS is also built in release mode by default, if you would like to build CappuccinOS in debug mode, set the `MODE` variable to `debug`.
+
 Run on a bare metal machine by flashing to a USB stick or hard drive:
 ```
 sudo dd if=bin/CappuccinOS.iso of=/dev/sdX && sync

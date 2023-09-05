@@ -1,6 +1,5 @@
 #![feature(abi_x86_interrupt)]
 #![feature(naked_functions)]
-#![feature(const_trait_impl)]
 #![no_std]
 #![no_main]
 
@@ -12,7 +11,6 @@ mod libs;
 mod sys;
 mod usr;
 
-use alloc::format;
 use drivers::serial;
 
 #[no_mangle]
@@ -31,7 +29,7 @@ pub extern "C" fn _start() -> ! {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    libs::logging::log_error(&format!("{}", info));
+    log_error!("{}", info);
 
     hcf();
 }

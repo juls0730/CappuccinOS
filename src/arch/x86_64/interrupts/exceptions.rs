@@ -1,38 +1,38 @@
 use super::idt_set_gate;
-use crate::libs::logging::{log_error, log_info};
+use crate::{log_error, log_info};
 
 #[no_mangle]
 pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) {
     match int {
         0x00 => {
-            log_error("DIVISION ERROR!");
+            log_error!("DIVISION ERROR!");
         }
         0x06 => {
-            log_error("INVALID OPCODE!");
+            log_error!("INVALID OPCODE!");
         }
         0x08 => {
-            log_error("DOUBLE FAULT!");
+            log_error!("DOUBLE FAULT!");
         }
         0x0D => {
-            log_error("GENERAL PROTECTION FAULT!");
+            log_error!("GENERAL PROTECTION FAULT!");
         }
         0x0E => {
-            log_error("PAGE FAULT!");
+            log_error!("PAGE FAULT!");
         }
         0xFF => {
-            log_error("EXCEPTION!");
+            log_error!("EXCEPTION!");
         }
         _ => {
-            log_error("EXCEPTION!");
+            log_error!("EXCEPTION!");
         }
     }
-    log_info(&alloc::format!(
+    log_info!(
         "INT: {:x} EIP: {:X}, CS: {:X}, EFLAGS: {:b}",
         int,
         eip,
         cs,
-        eflags,
-    ));
+        eflags
+    );
 
     loop {
         unsafe {

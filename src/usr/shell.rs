@@ -49,6 +49,7 @@ struct ModStatusBits {
 }
 
 impl ModStatusBits {
+    #[inline]
     const fn new() -> Self {
         return Self {
             status: Mutex::new(BitManipulator::<u8>::new()),

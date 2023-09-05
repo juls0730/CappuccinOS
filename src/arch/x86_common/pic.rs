@@ -55,6 +55,7 @@ pub struct ChainedPics {
 
 impl ChainedPics {
     // Create a new interface for the chained pic controllers.
+    #[inline]
     pub const fn new(offset1: u8, offset2: u8) -> ChainedPics {
         ChainedPics {
             pics: [
@@ -103,7 +104,7 @@ impl ChainedPics {
         outb(self.pics[1].data as u16, MODE_8086);
         wait();
 
-        crate::libs::logging::log_ok("PICs initialized");
+        crate::log_ok!("PICs initialized");
     }
 
     pub fn read_masks(&mut self) -> [u8; 2] {

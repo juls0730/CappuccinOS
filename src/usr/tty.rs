@@ -39,6 +39,7 @@ struct ConsoleFeatures {
 }
 
 impl Console {
+    #[inline]
     const fn new() -> Self {
         Self {
             columns: AtomicU16::new(0),
@@ -50,7 +51,7 @@ impl Console {
         }
     }
 
-    pub fn reinit(&self, back_buffer: Option<crate::sys::mem::Region>) {
+    pub fn reinit(&self, _back_buffer: Option<crate::sys::mem::Region>) {
         let framebuffer_response = crate::drivers::video::FRAMEBUFFER_REQUEST
             .get_response()
             .get();
@@ -68,8 +69,8 @@ impl Console {
 
         let framebuffer = &framebuffer_response.framebuffers()[0];
 
-        let columns = (framebuffer.width / 8);
-        let rows = (framebuffer.height / 16);
+        let columns = framebuffer.width / 8;
+        let rows = framebuffer.height / 16;
         self.columns.swap(columns as u16, Ordering::SeqCst);
         self.rows.swap(rows as u16, Ordering::SeqCst);
 
@@ -208,15 +209,15 @@ impl Console {
     }
 
     pub fn scroll_console(&self) {
-        let frambuffer_attributes = (*self.framebuffer_attributes.lock().read()).unwrap();
+        let framebuffer_attributes = (*self.framebuffer_attributes.lock().read()).unwrap();
 
-        let size = (frambuffer_attributes.pitch * frambuffer_attributes.height)
-            / (frambuffer_attributes.bpp / 8);
+        let size = (framebuffer_attributes.pitch * framebuffer_attributes.height)
+            / (framebuffer_attributes.bpp / 8);
 
         let framebuffer = (*self.framebuffer.lock().read()).unwrap().base as *mut u32;
 
         // size / height = bytes per row of pixels, multiplied by 16 since font height is 16 pixels.
-        let copy_from = ((size as f64 / frambuffer_attributes.height as f64) * 16.0) as usize;
+        let copy_from = ((size as f64 / framebuffer_attributes.height as f64) * 16.0) as usize;
 
         // Copy the framebuffer minus the top row to the framebuffer,
         // Then clear the last row with the background color to avoid noise on bare metal
@@ -254,6 +255,7 @@ impl Console {
 pub static CONSOLE: Console = Console::new();
 
 impl Cursor {
+    #[inline]
     const fn new() -> Self {
         return Self {
             cx: AtomicU16::new(0),

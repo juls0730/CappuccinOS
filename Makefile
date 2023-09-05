@@ -1,8 +1,6 @@
 IMAGE_NAME = CappuccinOS.iso
-ARCH := ${TARGET}
-MODE := ${MODE}
 CARGO_OPTS = --target=src/arch/${ARCH}/${ARCH}-unknown-none.json
-QEMU_OPTS = -cdrom bin/${IMAGE_NAME}
+QEMU_OPTS = -drive format=raw,file=bin/${IMAGE_NAME}
 
 ifeq (${MODE},)
 	MODE := release
@@ -37,8 +35,7 @@ copy-iso-files:
 		mkdir -p bin/iso_root/boot/limine
 		mkdir -p bin/iso_root/boot/EFI/BOOT
 
-		cp -v limine.cfg limine/limine-bios.sys \
-      		limine/limine-bios-cd.bin limine/limine-uefi-cd.bin bin/iso_root/boot/limine
+		cp -v limine.cfg limine/limine-bios.sys bin/iso_root/boot/limine
 		cp -v limine/BOOTX64.EFI bin/iso_root/boot/EFI/BOOT/
 		cp -v limine/BOOTIA32.EFI bin/iso_root/boot/EFI/BOOT/
 
@@ -54,12 +51,12 @@ copy-iso-files:
 		echo "Hello World" > bin/iso_root/example.txt
 
 build-iso: copy-iso-files
-		xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
-		        -no-emul-boot -boot-load-size 4 -boot-info-table \
-		        --efi-boot boot/limine/limine-uefi-cd.bin \
-		        -efi-boot-part --efi-boot-image --protective-msdos-label \
-		        bin/iso_root -o bin/${IMAGE_NAME}
+		dd if=/dev/zero of=bin/${IMAGE_NAME} bs=1M count=64
+		sgdisk bin/${IMAGE_NAME} -n 1:2048 -t 1:ef00
 		./limine/limine bios-install bin/${IMAGE_NAME}
+		mformat -i bin/${IMAGE_NAME}@@1M
+		mmd -i bin/${IMAGE_NAME}@@1M ::/EFI ::/EFI/BOOT
+		mcopy -i bin/${IMAGE_NAME}@@1M -s bin/iso_root/* ::/
 
 compile-bootloader:
 		make -C limine

@@ -33,6 +33,7 @@ pub struct FreeBlock {
 }
 
 impl FreeBlock {
+    #[inline]
     const fn new(next: *mut FreeBlock) -> Self {
         Self { next }
     }
@@ -116,6 +117,7 @@ impl BuddyAllocator {
             .map(|s| (log2(s) - self.min_block_size_log2.load(SeqCst)) as usize);
     }
 
+    #[inline]
     fn order_size(&self, order: usize) -> usize {
         return 1 << (self.min_block_size_log2.load(SeqCst) as usize + order);
     }
