@@ -136,7 +136,7 @@ fn parse_key(mut key: Key) -> Key {
         panic!("Key passed into parse_key is not a character key!");
     }
 
-    if mod_status.num_lock && key.name.starts_with("Keypad") {
+    if !mod_status.num_lock && key.name.starts_with("Keypad") {
         key = parse_keypad_keys(key);
         return key;
     }

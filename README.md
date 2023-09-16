@@ -11,7 +11,13 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 	- [ ] x86 CPU support
 	- [ ] armv8 CPU support
 - [ ] File system
+  - [ ] IDE Device support
+	- [ ] SATA device support
+	- [ ] MMC/Nand device support
+	- [ ] M.2 NVME device support
 - [ ] Basic shell
+  - [X] Basic I/O
+	- [ ] Executing Programs
 - [ ] Lua interpreter
 - [ ] Multitasking
 - [ ] Memory management
@@ -31,7 +37,8 @@ Before building CappuccinOS, make sure you have the following installed on your 
 
 - rust
 - binutils
-- xorriso
+- sgdisk
+- mtools
 - qemu (optional)
 
 Clone the repo:

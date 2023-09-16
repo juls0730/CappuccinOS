@@ -111,8 +111,6 @@ fn idt_init() {
             "lidt [{}]",
             in(reg) &IDT_PTR
         );
-
-        crate::log_ok!("Interrupt Descriptor Table");
     }
 }
 

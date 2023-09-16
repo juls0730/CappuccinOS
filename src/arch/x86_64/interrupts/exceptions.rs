@@ -1,8 +1,9 @@
 use super::idt_set_gate;
+use crate::libs::util::hcf;
 use crate::{log_error, log_info};
 
 #[no_mangle]
-pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) {
+pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) -> ! {
     match int {
         0x00 => {
             log_error!("DIVISION ERROR!");
@@ -34,11 +35,7 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) {
         eflags
     );
 
-    loop {
-        unsafe {
-            core::arch::asm!("hlt");
-        }
-    }
+    hcf();
 }
 
 #[naked]

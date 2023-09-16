@@ -1,8 +1,12 @@
+use core::sync::atomic::AtomicBool;
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::arch::io::{inb, outb};
 
 // COM1
 pub static PORT: u16 = 0x3f8;
+
+pub static POISONED: AtomicBool = AtomicBool::new(false);
 
 // Serial ports are as follows:
 // PORT + 0: Data register.
@@ -27,6 +31,7 @@ pub fn init_serial() -> u8 {
     // Check if serial is faulty
     if inb(PORT + 0) != 0xAE {
         crate::log_error!("Serial Driver failed to initialize");
+        POISONED.swap(true, core::sync::atomic::Ordering::SeqCst);
         return 1;
     }
 

@@ -1,3 +1,8 @@
+use core::{
+    arch::asm,
+    fmt::{write, Display},
+};
+
 use alloc::{format, vec::Vec};
 use limine::{MemmapEntry, MemoryMapEntryType};
 
@@ -14,6 +19,17 @@ pub struct Region {
     pub usable: bool,
     pub base: usize,
     pub len: usize,
+}
+
+impl Display for Region {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "[ {:#018X?} ] Usabele: {}",
+            self.base..self.base + self.len,
+            self.usable
+        )
+    }
 }
 
 fn find_largest_memory_region() -> (Option<Region>, Option<Region>) {
@@ -41,6 +57,11 @@ fn find_largest_memory_region() -> (Option<Region>, Option<Region>) {
             base: region.base as usize,
             len: region.len as usize,
         };
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        if region.typ == limine::MemoryMapEntryType::Framebuffer {
+            set_write_combined_mtrr(region.base, region.len);
+        }
 
         if !entry.usable {
             stitched_map.push(entry);
@@ -133,20 +154,72 @@ pub fn init() {
 
     crate::usr::tty::CONSOLE.reinit(second_largest_region);
 
+    // for (i, memory_region) in memory_map.iter().enumerate() {
+    //     crate::println!("Entry {:2}: {memory_region}", i);
+    //     crate::log_error!("aah");
+    // }
+
     if largest_region.is_none() {
         panic!("Suitable memory regions not found!");
     }
 
     crate::log_ok!(
-        "Using largest section with: {} bytes of memory for heap at {:#x}",
-        (largest_region.unwrap().len),
+        "Using largest section with: {} bytes of memory for heap at {:#X}",
+        largest_region.unwrap().len,
         largest_region.unwrap().base
     );
+
+    if second_largest_region.is_some() {
+        crate::log_ok!(
+        		"Using second largest section with: {} bytes of memory for framebuffer mirroring at {:#X}",
+        		second_largest_region.unwrap().len,
+        		second_largest_region.unwrap().base
+    		);
+    }
 
     ALLOCATOR.set_heap(
         largest_region.unwrap().base as *mut u8,
         largest_region.unwrap().len as usize,
     );
+}
+
+const IA32_MTRR_PHYSBASE0: u32 = 0x200;
+const IA32_MTRR_PHYSMASK0: u32 = 0x201;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub fn set_write_combined_mtrr(base: u64, size: u64) {
+    unsafe {
+        let cpu_id = core::arch::x86_64::__cpuid_count(1, 0);
+
+        let mtrr_supported = (cpu_id.eax & (1 << 12)) != 0;
+
+        if mtrr_supported == false {
+            return;
+        }
+    }
+
+    // Calculate the mask that corresponds to the size.
+    let mask = !((size - 1) | 0xFFF); // Assumes a 4KB page size.
+
+    // Set the Write-Combined memory type (0x02).
+    let memory_type = 0x02 << 3;
+
+    // Use inline assembly to write to the MSR registers.
+    unsafe {
+        asm!(
+                "wrmsr",
+                in("ecx") IA32_MTRR_PHYSBASE0,
+                in("eax") (base & 0xFFFFFFFF) | memory_type as u64,
+                in("edx") ((base >> 32) & 0xFFFFFFFF),
+        );
+
+        asm!(
+                "wrmsr",
+                in("ecx") IA32_MTRR_PHYSMASK0,
+                in("eax") (mask & 0xFFFFFFFF),
+                in("edx") ((mask >> 32) & 0xFFFFFFFF),
+        );
+    }
 }
 
 pub fn label_units(bytes: usize) -> (usize, &'static str) {

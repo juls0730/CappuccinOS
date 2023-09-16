@@ -103,8 +103,6 @@ impl ChainedPics {
         wait();
         outb(self.pics[1].data as u16, MODE_8086);
         wait();
-
-        crate::log_ok!("PICs initialized");
     }
 
     pub fn read_masks(&mut self) -> [u8; 2] {

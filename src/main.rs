@@ -12,15 +12,20 @@ mod sys;
 mod usr;
 
 use drivers::serial;
+use libs::util::hcf;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    arch::interrupts::init();
+
     sys::mem::init();
 
     serial::init_serial();
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    arch::interrupts::init();
+    // drivers::acpi::init_acpi();
+
+    drivers::pci::enumerate_pci_bus();
 
     usr::shell::init_shell();
 
@@ -32,16 +37,4 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     log_error!("{}", info);
 
     hcf();
-}
-
-fn hcf() -> ! {
-    loop {
-        unsafe {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            core::arch::asm!("hlt");
-
-            #[cfg(target_arch = "aarch64")]
-            core::arch::asm!("wfi");
-        }
-    }
 }
