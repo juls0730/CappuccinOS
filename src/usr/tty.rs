@@ -71,9 +71,10 @@ impl Console {
 
             let screen_size = row_size * back_buffer.height;
 
-            crate::sys::mem::set_write_combined_mtrr(
+            crate::arch::set_mtrr(
                 back_buffer_region.unwrap().base as u64,
                 screen_size as u64,
+                crate::arch::MTRRMode::WriteCombining,
             );
 
             unsafe {

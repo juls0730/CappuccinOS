@@ -1,9 +1,6 @@
-use core::{
-    arch::asm,
-    fmt::{write, Display},
-};
+use core::{arch::asm, fmt::Display};
 
-use alloc::{format, vec::Vec};
+use alloc::vec::Vec;
 use limine::{MemmapEntry, MemoryMapEntryType};
 
 use super::allocator::BuddyAllocator;
@@ -60,7 +57,11 @@ fn find_largest_memory_region() -> (Option<Region>, Option<Region>) {
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         if region.typ == limine::MemoryMapEntryType::Framebuffer {
-            set_write_combined_mtrr(region.base, region.len);
+            crate::arch::set_mtrr(
+                region.base,
+                region.len,
+                crate::arch::MTRRMode::WriteCombining,
+            );
         }
 
         if !entry.usable {
@@ -181,45 +182,6 @@ pub fn init() {
         largest_region.unwrap().base as *mut u8,
         largest_region.unwrap().len as usize,
     );
-}
-
-const IA32_MTRR_PHYSBASE0: u32 = 0x200;
-const IA32_MTRR_PHYSMASK0: u32 = 0x201;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub fn set_write_combined_mtrr(base: u64, size: u64) {
-    unsafe {
-        let cpu_id = core::arch::x86_64::__cpuid_count(1, 0);
-
-        let mtrr_supported = (cpu_id.eax & (1 << 12)) != 0;
-
-        if mtrr_supported == false {
-            return;
-        }
-    }
-
-    // Calculate the mask that corresponds to the size.
-    let mask = !((size - 1) | 0xFFF); // Assumes a 4KB page size.
-
-    // Set the Write-Combined memory type (0x02).
-    let memory_type = 0x02 << 3;
-
-    // Use inline assembly to write to the MSR registers.
-    unsafe {
-        asm!(
-                "wrmsr",
-                in("ecx") IA32_MTRR_PHYSBASE0,
-                in("eax") (base & 0xFFFFFFFF) | memory_type as u64,
-                in("edx") ((base >> 32) & 0xFFFFFFFF),
-        );
-
-        asm!(
-                "wrmsr",
-                in("ecx") IA32_MTRR_PHYSMASK0,
-                in("eax") (mask & 0xFFFFFFFF),
-                in("edx") ((mask >> 32) & 0xFFFFFFFF),
-        );
-    }
 }
 
 pub fn label_units(bytes: usize) -> (usize, &'static str) {
