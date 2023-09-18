@@ -9,6 +9,7 @@ use alloc::{
     string::String,
     vec::Vec,
 };
+use limine::{MemmapEntry, NonNullPtr};
 
 use crate::libs::{bit_manipulator::BitManipulator, mutex::Mutex};
 
@@ -41,12 +42,12 @@ impl Console {
             columns: AtomicU16::new(0),
             rows: AtomicU16::new(0),
             cursor: Cursor::new(),
-            feature_bits: Mutex::new(BitManipulator::<u8>::new()),
+            feature_bits: Mutex::new(BitManipulator::<u8>::new_from(0b00000010)),
             second_buffer: Mutex::new(None),
         }
     }
 
-    pub fn reinit(&self, back_buffer_region: Option<crate::sys::mem::Region>) {
+    pub fn reinit(&self, back_buffer_region: Option<&NonNullPtr<MemmapEntry>>) {
         let framebuffer = crate::drivers::video::get_framebuffer();
 
         // Enable serial if it initialized correctly
@@ -78,7 +79,11 @@ impl Console {
             );
 
             unsafe {
-                crate::libs::util::memset32(back_buffer.pointer as *mut u32, 0x000000, screen_size);
+                core::ptr::write_bytes::<u32>(
+                    back_buffer.pointer as *mut u32,
+                    0x000000,
+                    screen_size,
+                );
             }
 
             (*self.second_buffer.lock().write()) = Some(back_buffer);
@@ -154,12 +159,15 @@ impl Console {
             }
 
             if CONSOLE.get_features().serial_output {
+                if character == '\n' {
+                    crate::drivers::serial::write_serial('\r');
+                }
                 crate::drivers::serial::write_serial(character);
             }
 
             if !CONSOLE.get_features().graphical_output {
-                // No graphical output, so to avoid errors, return after sending serial
-                return;
+                // No graphical output, so to avoid errors, continue after sending serial
+                continue;
             }
 
             if character == '\u{0008}' {
@@ -371,8 +379,8 @@ fn color_to_hex(color: u8) -> u32 {
 
 #[macro_export]
 macro_rules! println {
-    () => (crate::print!("\r\n"));
-    ($($arg:tt)*) => (crate::print!("{}\r\n", &alloc::format!($($arg)*)));
+    () => (crate::print!("\n"));
+    ($($arg:tt)*) => (crate::print!("{}\n", &alloc::format!($($arg)*)));
 }
 
 #[macro_export]

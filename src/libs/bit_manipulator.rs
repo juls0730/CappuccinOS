@@ -63,6 +63,13 @@ impl BitManipulator<u8> {
             _phantom: PhantomData,
         }
     }
+
+    pub const fn new_from(value: u8) -> Self {
+        Self {
+            value,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl BitXorAssign<u8> for BitManipulator<u8> {
