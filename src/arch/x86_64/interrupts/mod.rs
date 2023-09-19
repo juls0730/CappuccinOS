@@ -85,8 +85,8 @@ fn idt_init() {
         );
 
         // Set every interrupt to the default interrupt handler
-        for num in 0..(idt_size) {
-            idt_set_gate(num as u8, exceptions::generic_handler as u64, 0x28, 0xEE);
+        for num in 0..=255 {
+            idt_set_gate(num, exceptions::generic_handler as u64, 0x28, 0xEE);
         }
 
         exceptions::set_exceptions();

@@ -11,24 +11,15 @@ pub static FRAMEBUFFER: Mutex<Option<Framebuffer>> = Mutex::new(None);
 
 // This is slow, but significantly faster than filling the framebuffer pixel-by-pixel with for loops.
 // idk, fix it later ig.
-pub fn fill_screen(
-    color: u32,
-    mut framebuffer: Option<Framebuffer>,
-    mirror_buffer: Option<Framebuffer>,
-) {
-    if framebuffer.is_none() {
-        framebuffer = get_framebuffer();
-    }
-
-    let framebuffer = framebuffer.expect("Tried to use framebuffer, but framebuffer was not found");
+pub fn fill_screen(color: u32, mirror_buffer: Option<Framebuffer>) {
+    let framebuffer =
+        get_framebuffer().expect("Tried to use framebuffer, but framebuffer was not found");
 
     let framebuffer_ptr = framebuffer.pointer;
 
     let buffer_size = (framebuffer.pitch / (framebuffer.bpp / 8)) * framebuffer.height;
 
     unsafe {
-        crate::libs::util::memset32(framebuffer_ptr as *mut u32, color, buffer_size);
-
         if mirror_buffer.is_some() {
             crate::libs::util::memset32(
                 mirror_buffer.unwrap().pointer as *mut u32,
@@ -36,6 +27,8 @@ pub fn fill_screen(
                 buffer_size,
             );
         }
+
+        crate::libs::util::memset32(framebuffer_ptr as *mut u32, color, buffer_size);
     }
 }
 
@@ -45,17 +38,13 @@ pub fn put_char(
     cy: u16,
     fg: u32,
     bg: u32,
-    mut framebuffer: Option<Framebuffer>,
     mirror_buffer: Option<Framebuffer>,
 ) {
     let font = font::G_8X16_FONT;
     let character_array = font[character as usize];
 
-    if framebuffer.is_none() {
-        framebuffer = get_framebuffer();
-    }
-
-    let framebuffer = framebuffer.expect("Tried to use framebuffer, but framebuffer was not found");
+    let framebuffer =
+        get_framebuffer().expect("Tried to use framebuffer, but framebuffer was not found");
 
     let start_x = cx * 8;
     let start_y = cy * 16;

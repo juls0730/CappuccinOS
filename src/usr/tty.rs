@@ -180,7 +180,6 @@ impl Console {
                     self.cursor.cy.load(Ordering::SeqCst),
                     self.cursor.fg.load(Ordering::SeqCst),
                     self.cursor.bg.load(Ordering::SeqCst),
-                    None,
                     *self.second_buffer.lock().read(),
                 );
                 continue;
@@ -209,7 +208,6 @@ impl Console {
                     self.cursor.cy.load(Ordering::SeqCst),
                     self.cursor.fg.load(Ordering::SeqCst),
                     self.cursor.bg.load(Ordering::SeqCst),
-                    None,
                     *self.second_buffer.lock().read(),
                 );
 
@@ -266,7 +264,6 @@ impl Console {
 
         crate::drivers::video::fill_screen(
             self.cursor.bg.load(Ordering::SeqCst),
-            None,
             *self.second_buffer.lock().read(),
         );
     }
