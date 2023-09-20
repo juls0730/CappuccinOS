@@ -1,6 +1,6 @@
 use core::{
     mem::size_of,
-    sync::atomic::{AtomicU16, AtomicU32, Ordering},
+    sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
 };
 
 use alloc::{
@@ -72,13 +72,13 @@ impl Console {
 
             let screen_size = row_size * back_buffer.height;
 
-            crate::arch::set_mtrr(
-                back_buffer_region.unwrap().base as u64,
-                screen_size as u64,
-                crate::arch::MTRRMode::WriteCombining,
-            );
-
             unsafe {
+                crate::arch::set_mtrr(
+                    back_buffer_region.unwrap().base as u64,
+                    screen_size as u64,
+                    crate::arch::MTRRMode::WriteCombining,
+                );
+
                 core::ptr::write_bytes::<u32>(
                     back_buffer.pointer as *mut u32,
                     0x000000,
@@ -128,6 +128,10 @@ impl Console {
 
                     for code in codes {
                         match code {
+                            0 => {
+                                self.cursor.set_fg(0xbababa);
+                                self.cursor.set_bg(0x000000);
+                            }
                             30..=37 => self.cursor.set_fg(color_to_hex(code - 30)),
                             40..=47 => self.cursor.set_bg(color_to_hex(code - 40)),
                             90..=97 => self.cursor.set_fg(color_to_hex(code - 30)),
@@ -438,7 +442,7 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
             CONSOLE.cursor.move_left();
             return;
         } else {
-            CONSOLE.cursor.move_left();
+            CONSOLE.cursor.move_right();
             return;
         }
     }

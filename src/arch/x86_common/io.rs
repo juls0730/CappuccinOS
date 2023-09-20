@@ -67,10 +67,13 @@ pub fn inl(port: u16) -> u32 {
     return value;
 }
 
-pub fn insl(port: u16, buffer: &mut [u32], quads: u32) {
-    for i in 0..quads {
-        let data = inl(port);
-        (*buffer)[i as usize] = data;
-        crate::println!("{}", data);
+pub fn insl(port: u16, buffer: *mut u32, quads: u32) {
+    unsafe {
+        asm!("cld",
+            "rep insd",
+            in("dx") port,
+            inout("rdi") buffer => _,
+            inout("rcx") quads => _
+        );
     }
 }

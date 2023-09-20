@@ -14,7 +14,7 @@ const IA32_MTRR_PHYSBASE0: u32 = 0x200;
 const IA32_MTRR_PHYSMASK0: u32 = 0x201;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub fn set_mtrr(base: u64, size: u64, mode: MTRRMode) {
+pub unsafe fn set_mtrr(base: u64, size: u64, mode: MTRRMode) {
     #[cfg(target_arch = "x86")]
     use core::arch::x86::__cpuid_count;
     #[cfg(target_arch = "x86_64")]

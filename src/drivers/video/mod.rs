@@ -149,7 +149,10 @@ pub fn put_char(
 //     }
 // }
 
-pub fn put_pixel(x: u32, y: u32, color: u32, framebuffer: Framebuffer) {
+pub fn put_pixel(x: u32, y: u32, color: u32) {
+    let framebuffer =
+        get_framebuffer().expect("Tried to use framebuffer, but framebuffer was not found");
+
     let framebuffer_ptr = framebuffer.pointer;
 
     let pixel_offset = (y * framebuffer.pitch as u32 + (x * (framebuffer.bpp / 8) as u32)) as isize;

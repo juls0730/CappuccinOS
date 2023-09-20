@@ -27,6 +27,8 @@ pub extern "C" fn _start() -> ! {
 
     drivers::pci::enumerate_pci_bus();
 
+    drivers::ide::init();
+
     usr::shell::init_shell();
 
     hcf();
