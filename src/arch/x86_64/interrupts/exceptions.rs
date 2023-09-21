@@ -20,6 +20,9 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) ->
         0x0E => {
             log_error!("PAGE FAULT!");
         }
+        0x0F => {
+            log_error!("IDE");
+        }
         0xFF => {
             log_error!("EXCEPTION!");
         }

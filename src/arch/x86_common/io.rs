@@ -31,13 +31,27 @@ pub fn inb(port: u16) -> u8 {
 pub fn outw(port: u16, value: u16) {
     unsafe {
         asm!(
-            "out dx, eax",
+            "out dx, ax",
             in("dx") port,
-            in("eax") value,
+            in("ax") value,
             options(preserves_flags, nomem, nostack)
         );
     }
     return;
+}
+
+#[inline]
+pub fn inw(port: u16) -> u16 {
+    let mut value: u16;
+    unsafe {
+        asm!(
+            "in ax, dx",
+            out("ax") value,
+            in("dx") port,
+            options(preserves_flags, nomem, nostack)
+        );
+    }
+    return value;
 }
 
 #[inline]

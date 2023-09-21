@@ -37,6 +37,8 @@ static IDT: Mutex<[IdtEntry; 256]> = Mutex::new(
 pub enum InterruptIndex {
     Timer = PIC_1_OFFSET,
     Keyboard,
+    Ide = PIC_1_OFFSET + 14,
+    Ide2,
 }
 
 impl InterruptIndex {
@@ -72,6 +74,18 @@ extern "x86-interrupt" fn timer_handler() {
         .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
 }
 
+extern "x86-interrupt" fn ide_handler() {
+    PICS.lock()
+        .write()
+        .notify_end_of_interrupt(InterruptIndex::Ide.as_u8());
+}
+
+extern "x86-interrupt" fn ide2_handler() {
+    PICS.lock()
+        .write()
+        .notify_end_of_interrupt(InterruptIndex::Ide2.as_u8());
+}
+
 fn idt_init() {
     unsafe {
         let idt_size = core::mem::size_of::<IdtEntry>() * 256;
@@ -94,6 +108,15 @@ fn idt_init() {
         idt_set_gate(
             InterruptIndex::Timer.as_u8(),
             timer_handler as u64,
+            0x28,
+            0xEE,
+        );
+
+        idt_set_gate(InterruptIndex::Ide.as_u8(), ide_handler as u64, 0x28, 0xEE);
+
+        idt_set_gate(
+            InterruptIndex::Ide2.as_u8(),
+            ide2_handler as u64,
             0x28,
             0xEE,
         );

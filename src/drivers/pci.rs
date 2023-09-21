@@ -14,13 +14,13 @@ fn read_pci_config(bus: u8, device: u8, func: u8, offset: u8) -> u32 {
     address |= (bus as u32) << 16; // Set Bus Number
     address |= (device as u32) << 11; // Set Device Number
     address |= (func as u32) << 8; // Set Function number
-    address |= (offset as u32) & 0xFC; // Set Register offset
+    address |= (offset & 0xFC) as u32; // Set Register offset
 
     // Write the address to the PCI_CONFIG_PORT
     outl(PCI_CONFIG_PORT, address);
 
     // Read the data from the PCI_DATA_PORT
-    let data = inl(PCI_DATA_PORT);
+    let data = inl(PCI_DATA_PORT) >> ((offset & 2) * 8);
 
     return data;
 }
