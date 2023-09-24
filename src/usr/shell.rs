@@ -72,7 +72,8 @@ impl ModStatusBits {
     }
 
     fn set_modifier_key(&self, key: &str, status: bool) {
-        let mut led_status = *self.led_status.lock().write();
+        let mut led_status_lock = self.led_status.lock();
+        let led_status = led_status_lock.write();
         let mut mod_status = self.get_status();
 
         match key {
@@ -81,15 +82,15 @@ impl ModStatusBits {
             "alt" => mod_status.alt = status,
             "shift" => mod_status.shift = status,
             "caps" => {
-                led_status ^= 0b00000100;
+                *led_status ^= 0b00000100;
                 mod_status.caps = status
             }
             "num_lock" => {
-                led_status ^= 0b00000010;
+                *led_status ^= 0b00000010;
                 mod_status.num_lock = status
             }
             "scr_lock" => {
-                led_status ^= 0b00000100;
+                *led_status ^= 0b00000100;
                 mod_status.scr_lock = status
             }
             _ => return,

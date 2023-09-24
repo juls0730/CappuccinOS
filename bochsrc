@@ -7,7 +7,6 @@ megs: 512
 clock: sync=realtime, time0=local
 
 ata0-master: type=disk, path="bin/CappuccinOS.iso", mode=flat
-ata0-slave: type=disk, path="bin/second.iso", mode=flat
 
 boot: c
 

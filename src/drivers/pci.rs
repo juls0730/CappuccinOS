@@ -77,7 +77,6 @@ pub fn get_pci_bar_addresses(bus: u8, device: u8, func: u8) -> (u32, u32, u32, u
     (bar0, bar1, bar2, bar3, bar4, bar5)
 }
 
-#[derive(Clone, Copy)]
 pub struct PciDevice {
     pub bus: u8,
     pub device: u8,
@@ -119,7 +118,7 @@ impl PciDevice {
 impl core::fmt::Display for PciDevice {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "Bus: {} Device: {} Function: {} VendorID: {:#X} DeviceID: {:#X} ClassCode: {:#04X} SubclassCode: {:#04X} ProgIF: {:#04X}",
-										self.bus, self.device, self.func, self.vendor_id, self.device_id, self.class_code, self.subclass_code, self.prog_if)
+        self.bus, self.device, self.func, self.vendor_id, self.device_id, self.class_code, self.subclass_code, self.prog_if)
     }
 }
 

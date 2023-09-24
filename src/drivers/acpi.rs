@@ -80,7 +80,6 @@ pub fn init_acpi() {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
 struct ACPISDTHeader {
     signature: [u8; 4],
     length: u32,
@@ -104,7 +103,6 @@ fn check_rsdt_checksum(table_header: *const ACPISDTHeader) -> bool {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
 struct RSDT {
     h: ACPISDTHeader,
     pointer_to_other_sdt: *const u32,

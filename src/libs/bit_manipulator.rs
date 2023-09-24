@@ -3,7 +3,6 @@ use core::{
     ops::{BitAnd, BitOr, BitOrAssign, BitXorAssign, Not, Shl, Shr},
 };
 
-#[derive(Clone, Copy, Debug)]
 pub struct BitManipulator<T> {
     value: T,
     _phantom: PhantomData<T>,

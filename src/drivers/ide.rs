@@ -1,9 +1,11 @@
+use core::mem::size_of;
+
 use crate::{
-    arch::io::{inb, inw, outb},
-    drivers::pci,
+    arch::io::{inb, insw, inw, outb, outw},
     libs::mutex::Mutex,
-    log_error,
 };
+
+const ATA_SECTORS: usize = 512;
 
 #[repr(u8)]
 enum ATADriveStatus {
@@ -61,7 +63,7 @@ enum ATADriveIdentifyResponse {
     MaxLBAExt = 0xC8,
 }
 
-#[repr(u8)]
+#[repr(u16)]
 enum IDEDriveType {
     ATA = 0x00,
     ATAPI = 0x01,
@@ -94,8 +96,6 @@ enum ATADriveRegister {
     DeviceAddress = 0x0D,
 }
 
-impl ATADriveChannels {}
-
 #[repr(u8)]
 enum ATADriveChannels {
     Primary = 0x00,
@@ -108,7 +108,7 @@ enum ATADriveDirection {
     Write = 0x01,
 }
 
-static drive_id: Mutex<[[u16; 256]; 2]> = Mutex::new([[0u16; 256]; 2]);
+static DRIVE_ID: Mutex<[[u16; 256]; 2]> = Mutex::new([[0u16; 256]; 2]);
 
 pub fn init() {
     // for pci_device in super::pci::PCI_DEVICES.lock().read() {
@@ -132,6 +132,20 @@ pub fn init() {
     // }
     // crate::println!("{:?}", ata_identify_drive(0xB0));
     ide_initialize(0x1f0, 0x3F6, 0x170, 0x376, 0x000);
+}
+
+struct IdeDevice {
+    reserved: u8,
+    channel: u8,
+    drive: ATADriveType,
+    drive_type: IDEDriveType,
+    signature: u16,
+    capabilities: u16,
+    command_sets: u32,
+    size: u32,
+    model: [u8; 40],
+    io_port: u16,
+    control_port: u16,
 }
 
 struct Drive {
@@ -167,7 +181,7 @@ impl Drive {
 
     pub fn sectors(&self, drive: u8) -> u64 {
         let sectors = unsafe {
-            drive_id.lock().read()[drive as usize - ATADriveType::Parent as usize]
+            DRIVE_ID.lock().read()[drive as usize - ATADriveType::Parent as usize]
                 .as_ptr()
                 .add(100)
         };
@@ -183,7 +197,7 @@ impl Drive {
         return self.status() & ATADriveStatus::DataReqReady as u16 != 0;
     }
 
-    pub fn is_error(&self) -> boot {
+    pub fn is_error(&self) -> bool {
         return self.status() & ATADriveStatus::Error as u16 != 0;
     }
 
@@ -216,7 +230,7 @@ impl Drive {
         }
 
         for i in 0..256 {
-            drive_id.lock().write()[drive as usize - ATADriveType::Parent as usize][i] =
+            DRIVE_ID.lock().write()[drive as usize - ATADriveType::Parent as usize][i] =
                 inw(self.io_port + ATADriveRegister::Data as u16)
         }
 
@@ -233,6 +247,67 @@ impl Drive {
 
         return self.identify(drive);
     }
+
+    pub fn read(
+        &self,
+        drive: ATADriveType,
+        buffer: &mut [u8],
+        sector: u64,
+        sector_count: u16,
+    ) -> bool {
+        let selector = (drive as u8 + 0x20) | ((sector >> 24) & 0x0F) as u8;
+
+        self.select(selector);
+
+        while self.is_busy() {}
+
+        outw(
+            self.io_port + ATADriveRegister::SectorCount0 as u16,
+            sector_count,
+        );
+        outb(self.io_port + ATADriveRegister::LBA0 as u16, sector as u8);
+        outb(
+            self.io_port + ATADriveRegister::LBA1 as u16,
+            (sector >> 8) as u8,
+        );
+        outb(
+            self.io_port + ATADriveRegister::LBA2 as u16,
+            (sector >> 16) as u8,
+        );
+        outb(self.io_port + ATADriveRegister::LBA3 as u16, 0);
+        outb(self.io_port + ATADriveRegister::LBA4 as u16, 0);
+        outb(self.io_port + ATADriveRegister::LBA5 as u16, 0);
+
+        self.send_command(ATADriveCommand::ReadPIO);
+
+        let mut words = buffer.as_mut_ptr();
+
+        for _ in 0..sector_count {
+            while self.is_busy() {}
+            while !self.is_ready() {}
+
+            if self.is_error() {
+                return false;
+            }
+
+            for _ in 0..(ATA_SECTORS / size_of::<u16>()) {
+                // insw(
+                //     self.io_port + ATADriveRegister::Data as u16,
+                //     buffer.as_mut_ptr() as *mut u32,
+                //     sector,
+                // );
+                unsafe {
+                    core::ptr::write_volatile(
+                        words as *mut u16,
+                        inw(self.io_port + ATADriveRegister::Data as u16),
+                    );
+                    words = words.add(2);
+                }
+            }
+        }
+
+        return true;
+    }
 }
 
 static IDE_DEVICES: Mutex<[bool; 2]> = Mutex::new([false; 2]);
@@ -240,7 +315,7 @@ static IDE_DEVICES: Mutex<[bool; 2]> = Mutex::new([false; 2]);
 // TODO: This code is pretty much just the C from @Moldytzu's mOS
 // This code could probably be made better and more device agnostic
 // But that's TODO obviously
-fn ide_initialize(bar0: u32, bar1: u32, bar2: u32, bar3: u32, bar4: u32) {
+fn ide_initialize(_bar0: u32, _bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
     let io_port_base = 0x1F0;
     let control_port_base = 0x3F6;
 
@@ -269,7 +344,17 @@ fn ide_initialize(bar0: u32, bar1: u32, bar2: u32, bar3: u32, bar4: u32) {
         crate::log_info!(
             "ATA: Drive 0 has {} sectors ({} MB)",
             sectors,
-            (sectors * 512) / 1024 / 1024
+            (sectors * ATA_SECTORS as u64) / 1024 / 1024
         )
     }
+
+    let a = DRIVE_ID.lock().read()[0];
+
+    crate::println!("{:?}", a);
+
+    let mut buffer = [0u8; 512];
+
+    drive.read(ATADriveType::Parent, buffer.as_mut(), 0, 1);
+
+    crate::println!("{:X?}", buffer);
 }

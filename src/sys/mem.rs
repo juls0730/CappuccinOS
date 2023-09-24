@@ -1,6 +1,3 @@
-use core::{arch::asm, fmt::Display};
-
-use alloc::vec::Vec;
 use limine::{MemmapEntry, MemoryMapEntryType, NonNullPtr};
 
 use super::allocator::BuddyAllocator;
@@ -158,10 +155,10 @@ pub fn init() {
 
     if second_largest_region.is_some() {
         crate::log_ok!(
-        		"Using second largest section with: {} bytes of memory for framebuffer mirroring at {:#X}",
-        		second_largest_region.unwrap().len,
-        		second_largest_region.unwrap().base
-    		);
+            "Using second largest section with: {} bytes of memory for framebuffer mirroring at {:#X}",
+            second_largest_region.unwrap().len,
+            second_largest_region.unwrap().base
+        );
     }
 
     crate::println!("====== MEMORY MAP ======");

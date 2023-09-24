@@ -1,8 +1,6 @@
 mod font;
 
 use crate::libs::mutex::Mutex;
-use alloc::vec;
-use alloc::vec::Vec;
 use limine::FramebufferRequest;
 
 pub static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new(0);
@@ -162,7 +160,7 @@ pub fn put_pixel(x: u32, y: u32, color: u32) {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Framebuffer {
     pub width: usize,
     pub height: usize,

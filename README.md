@@ -8,23 +8,23 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 - [X] ANSI color codes in console
 - [ ] Use APIC instead of PIC
 - [ ] Roll my own bootloader
-	- [ ] x86 CPU support
-	- [ ] armv8 CPU support
+    - [ ] x86 CPU support
+    - [ ] armv8 CPU support
 - [ ] File system
   - [ ] IDE Device support
-	- [ ] SATA device support
-	- [ ] MMC/Nand device support
-	- [ ] M.2 NVME device support
+    - [ ] SATA device support
+    - [ ] MMC/Nand device support
+    - [ ] M.2 NVME device support
 - [ ] Basic shell
   - [X] Basic I/O
-	- [ ] Executing Programs
+    - [ ] Executing Programs
 - [ ] Lua interpreter
 - [ ] Multitasking
 - [ ] Memory management
 - [ ] Network support
 - [ ] GUI
 - [ ] Device drivers
-	- [ ] Native intel graphics
+    - [ ] Native intel graphics
 - [ ] User authentication
 - [ ] Power management
 - [ ] Paging

@@ -1,7 +1,4 @@
-use core::{
-    mem::size_of,
-    sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
-};
+use core::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 
 use alloc::{
     alloc::{alloc, dealloc},
@@ -32,7 +29,7 @@ struct ConsoleFeatures {
     _reserved: [u8; 6],
     serial_output: bool,
     graphical_output: bool,
-    doubled_buffers: bool,
+    doubled_buffered: bool,
 }
 
 impl Console {
@@ -100,13 +97,13 @@ impl Console {
     fn get_features(&self) -> ConsoleFeatures {
         let graphical_output = ((*self.feature_bits.lock().read()).get() & 0x01) != 0;
         let serial_output = ((*self.feature_bits.lock().read()).get() & 0x02) != 0;
-        let doubled_buffers = ((*self.feature_bits.lock().read()).get() & 0x04) != 0;
+        let doubled_buffered = ((*self.feature_bits.lock().read()).get() & 0x04) != 0;
 
         return ConsoleFeatures {
             _reserved: [0; 6],
             serial_output,
             graphical_output,
-            doubled_buffers,
+            doubled_buffered,
         };
     }
 
@@ -387,8 +384,8 @@ macro_rules! println {
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => (
-			crate::usr::tty::CONSOLE.puts(&alloc::format!($($arg)*))
-		)
+        crate::usr::tty::CONSOLE.puts(&alloc::format!($($arg)*))
+    )
 }
 
 pub struct InputBuffer {

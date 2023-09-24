@@ -1,6 +1,6 @@
 use core::arch::asm;
 
-#[inline]
+#[inline(always)]
 pub fn outb(port: u16, value: u8) {
     unsafe {
         asm!(
@@ -13,7 +13,7 @@ pub fn outb(port: u16, value: u8) {
     return;
 }
 
-#[inline]
+#[inline(always)]
 pub fn inb(port: u16) -> u8 {
     let mut value: u8;
     unsafe {
@@ -27,7 +27,7 @@ pub fn inb(port: u16) -> u8 {
     return value;
 }
 
-#[inline]
+#[inline(always)]
 pub fn outw(port: u16, value: u16) {
     unsafe {
         asm!(
@@ -40,7 +40,7 @@ pub fn outw(port: u16, value: u16) {
     return;
 }
 
-#[inline]
+#[inline(always)]
 pub fn inw(port: u16) -> u16 {
     let mut value: u16;
     unsafe {
@@ -54,7 +54,19 @@ pub fn inw(port: u16) -> u16 {
     return value;
 }
 
-#[inline]
+#[inline(always)]
+pub fn insw(port: u16, buffer: *mut u32, offset: u64) {
+    unsafe {
+        asm!("cld",
+            "rep insw",
+            in("dx") port,
+            inout("rdi") buffer => _,
+            inout("rcx") offset => _
+        );
+    }
+}
+
+#[inline(always)]
 pub fn outl(port: u16, value: u32) {
     unsafe {
         asm!(
@@ -67,7 +79,7 @@ pub fn outl(port: u16, value: u32) {
     return;
 }
 
-#[inline]
+#[inline(always)]
 pub fn inl(port: u16) -> u32 {
     let mut value: u32;
     unsafe {
@@ -81,13 +93,7 @@ pub fn inl(port: u16) -> u32 {
     return value;
 }
 
-pub fn insl(port: u16, buffer: *mut u32, quads: u32) {
-    unsafe {
-        asm!("cld",
-            "rep insd",
-            in("dx") port,
-            inout("rdi") buffer => _,
-            inout("rcx") quads => _
-        );
-    }
+#[inline(always)]
+pub fn io_wait() {
+    outb(0x80, 0);
 }

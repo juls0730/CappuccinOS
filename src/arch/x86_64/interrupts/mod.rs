@@ -2,8 +2,8 @@ mod exceptions;
 
 use crate::{arch::x86_common::pic::ChainedPics, libs::mutex::Mutex};
 
-#[derive(Copy, Clone)]
 #[repr(C, packed)]
+#[derive(Clone, Copy)]
 struct IdtEntry {
     base_lo: u16,
     sel: u16,
@@ -14,25 +14,28 @@ struct IdtEntry {
     always0: u32,
 }
 
+impl IdtEntry {
+    const fn new() -> Self {
+        return Self {
+            base_lo: 0,
+            sel: 0,
+            ist: 0,
+            always0: 0,
+            flags: 0,
+            base_hi: 0,
+            base_mid: 0,
+        };
+    }
+}
+
 #[repr(C, packed)]
 struct IdtPtr {
     limit: u16,
     base: u64,
 }
 
-static IDT: Mutex<[IdtEntry; 256]> = Mutex::new(
-    [IdtEntry {
-        base_lo: 0,
-        sel: 0,
-        ist: 0,
-        always0: 0,
-        flags: 0,
-        base_hi: 0,
-        base_mid: 0,
-    }; 256],
-);
+static IDT: Mutex<[IdtEntry; 256]> = Mutex::new([IdtEntry::new(); 256]);
 
-#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum InterruptIndex {
     Timer = PIC_1_OFFSET,
