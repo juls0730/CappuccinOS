@@ -280,7 +280,7 @@ impl Drive {
 
         self.send_command(ATADriveCommand::ReadPIO);
 
-        let mut words = buffer.as_mut_ptr();
+        let words = buffer.as_mut_ptr() as *mut u16;
 
         for _ in 0..sector_count {
             while self.is_busy() {}
@@ -290,20 +290,11 @@ impl Drive {
                 return false;
             }
 
-            for _ in 0..(ATA_SECTORS / size_of::<u16>()) {
-                // insw(
-                //     self.io_port + ATADriveRegister::Data as u16,
-                //     buffer.as_mut_ptr() as *mut u32,
-                //     sector,
-                // );
-                unsafe {
-                    core::ptr::write_volatile(
-                        words as *mut u16,
-                        inw(self.io_port + ATADriveRegister::Data as u16),
-                    );
-                    words = words.add(2);
-                }
-            }
+            insw(
+                self.io_port + ATADriveRegister::Data as u16,
+                words,
+                ATA_SECTORS / size_of::<u16>(),
+            );
         }
 
         return true;

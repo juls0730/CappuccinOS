@@ -55,13 +55,13 @@ pub fn inw(port: u16) -> u16 {
 }
 
 #[inline(always)]
-pub fn insw(port: u16, buffer: *mut u32, offset: u64) {
+pub fn insw(port: u16, buffer: *mut u16, count: usize) {
     unsafe {
         asm!("cld",
             "rep insw",
             in("dx") port,
             inout("rdi") buffer => _,
-            inout("rcx") offset => _
+            inout("rcx") count => _
         );
     }
 }
