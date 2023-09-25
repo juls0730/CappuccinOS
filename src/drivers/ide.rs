@@ -3,11 +3,13 @@ use core::mem::size_of;
 use crate::{
     arch::io::{inb, insw, inw, outb, outw},
     libs::mutex::Mutex,
+    log_info,
 };
 
 const ATA_SECTORS: usize = 512;
 
 #[repr(u8)]
+#[derive(Debug, PartialEq)]
 enum ATADriveStatus {
     Error = 0x01,
     Index = 0x02,
@@ -17,6 +19,23 @@ enum ATADriveStatus {
     WriteFault = 0x20,
     Ready = 0x40,
     Busy = 0x80,
+    NotPresent = 0xFF,
+}
+
+impl core::convert::From<u8> for ATADriveStatus {
+    fn from(value: u8) -> Self {
+        match value {
+            0x01 => Self::Error,
+            0x02 => Self::Index,
+            0x04 => Self::Corrupt,
+            0x08 => Self::DataReqReady,
+            0x10 => Self::DriveSeekDone,
+            0x20 => Self::WriteFault,
+            0x40 => Self::Ready,
+            0x80 => Self::Busy,
+            _ => Self::NotPresent,
+        }
+    }
 }
 
 #[repr(u8)]
@@ -131,7 +150,7 @@ pub fn init() {
     //     ide_initialize(bar0, bar1, bar2, bar3, bar4);
     // }
     // crate::println!("{:?}", ata_identify_drive(0xB0));
-    ide_initialize(0x1f0, 0x3F6, 0x170, 0x376, 0x000);
+    ide_initialize(0x1F0, 0x3F6, 0x170, 0x376, 0x000);
 }
 
 struct IdeDevice {
@@ -189,19 +208,37 @@ impl Drive {
         return unsafe { *(sectors as *const u64) };
     }
 
-    pub fn is_busy(&self) -> bool {
-        return self.status() & ATADriveStatus::Busy as u16 != 0;
+    fn wait_for_drive_ready(&self) -> Result<(), ()> {
+        loop {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            crate::arch::pause();
+
+            let status = self.status();
+
+            if status & ATADriveStatus::Error as u16 != 0
+                || status & ATADriveStatus::WriteFault as u16 != 0
+            {
+                return Err(());
+            }
+
+            if status & ATADriveStatus::Busy as u16 != 0 {
+                continue;
+            }
+
+            if status & ATADriveStatus::DataReqReady as u16 != 0 {
+                return Ok(());
+            }
+        }
     }
 
-    pub fn is_ready(&self) -> bool {
-        return self.status() & ATADriveStatus::DataReqReady as u16 != 0;
+    pub fn await_busy(&self) {
+        while self.status() & ATADriveStatus::Busy as u16 != 0 {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            crate::arch::pause();
+        }
     }
 
-    pub fn is_error(&self) -> bool {
-        return self.status() & ATADriveStatus::Error as u16 != 0;
-    }
-
-    pub fn identify(&self, drive: u8) -> bool {
+    pub fn identify(&self, drive: u8) -> Result<(), ()> {
         self.select(drive);
 
         for i in 0..3 {
@@ -213,39 +250,32 @@ impl Drive {
 
         self.send_command(ATADriveCommand::Identify);
 
-        if self.status() == 0 {
+        if self.status() as u8 == 0x00 {
             // drive did not respond to identify command
             // therefore, the drive is not present
-            return false;
+            return Err(());
         }
 
-        while self.is_busy() {
-            if self.is_ready() {
-                break;
-            }
-
-            if self.is_error() {
-                return false;
-            }
-        }
+        let _ = self
+            .wait_for_drive_ready()
+            .map_err(|_| crate::log_error!("Error identifying drive"))?;
 
         for i in 0..256 {
             DRIVE_ID.lock().write()[drive as usize - ATADriveType::Parent as usize][i] =
                 inw(self.io_port + ATADriveRegister::Data as u16)
         }
 
-        return true;
+        return Ok(());
     }
 
     pub fn is_present(&self, drive: u8) -> bool {
         self.select(drive);
 
         if self.status() == 0xFF {
-            // The bus is not present
             return false;
         }
 
-        return self.identify(drive);
+        return self.identify(drive).is_ok();
     }
 
     pub fn read(
@@ -254,41 +284,63 @@ impl Drive {
         buffer: &mut [u8],
         sector: u64,
         sector_count: u16,
-    ) -> bool {
+    ) -> Result<(), ()> {
         let selector = (drive as u8 + 0x20) | ((sector >> 24) & 0x0F) as u8;
 
         self.select(selector);
 
-        while self.is_busy() {}
+        self.await_busy();
 
-        outw(
-            self.io_port + ATADriveRegister::SectorCount0 as u16,
-            sector_count,
-        );
-        outb(self.io_port + ATADriveRegister::LBA0 as u16, sector as u8);
-        outb(
-            self.io_port + ATADriveRegister::LBA1 as u16,
-            (sector >> 8) as u8,
-        );
-        outb(
-            self.io_port + ATADriveRegister::LBA2 as u16,
-            (sector >> 16) as u8,
-        );
-        outb(self.io_port + ATADriveRegister::LBA3 as u16, 0);
-        outb(self.io_port + ATADriveRegister::LBA4 as u16, 0);
-        outb(self.io_port + ATADriveRegister::LBA5 as u16, 0);
+        let using_lba48 = if sector >= 0x10000000 { true } else { false };
 
-        self.send_command(ATADriveCommand::ReadPIO);
+        if using_lba48 {
+            outw(
+                self.io_port + ATADriveRegister::SectorCount0 as u16,
+                sector_count,
+            );
+            outb(self.io_port + ATADriveRegister::LBA0 as u16, sector as u8);
+            outb(
+                self.io_port + ATADriveRegister::LBA1 as u16,
+                (sector >> 8) as u8,
+            );
+            outb(
+                self.io_port + ATADriveRegister::LBA2 as u16,
+                (sector >> 16) as u8,
+            );
+            outb(
+                self.io_port + ATADriveRegister::LBA3 as u16,
+                (sector >> 24) as u8,
+            );
+            outb(self.io_port + ATADriveRegister::LBA4 as u16, 0);
+            outb(self.io_port + ATADriveRegister::LBA5 as u16, 0);
+
+            self.send_command(ATADriveCommand::ReadPIOExt);
+        } else {
+            outw(
+                self.io_port + ATADriveRegister::SectorCount0 as u16,
+                sector_count,
+            );
+            outb(self.io_port + ATADriveRegister::LBA0 as u16, sector as u8);
+            outb(
+                self.io_port + ATADriveRegister::LBA1 as u16,
+                (sector >> 8) as u8,
+            );
+            outb(
+                self.io_port + ATADriveRegister::LBA2 as u16,
+                (sector >> 16) as u8,
+            );
+            outb(self.io_port + ATADriveRegister::LBA3 as u16, 0);
+            outb(self.io_port + ATADriveRegister::LBA4 as u16, 0);
+            outb(self.io_port + ATADriveRegister::LBA5 as u16, 0);
+
+            self.send_command(ATADriveCommand::ReadPIO);
+        }
 
         let words = buffer.as_mut_ptr() as *mut u16;
 
         for _ in 0..sector_count {
-            while self.is_busy() {}
-            while !self.is_ready() {}
-
-            if self.is_error() {
-                return false;
-            }
+            self.wait_for_drive_ready()
+                .map_err(|_| crate::log_error!("Error reading IDE Device"))?;
 
             insw(
                 self.io_port + ATADriveRegister::Data as u16,
@@ -297,7 +349,7 @@ impl Drive {
             );
         }
 
-        return true;
+        return Ok(());
     }
 }
 
@@ -332,20 +384,17 @@ fn ide_initialize(_bar0: u32, _bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
 
     if ide_devices[0] {
         let sectors = drive.sectors(ATADriveType::Parent as u8);
+
         crate::log_info!(
             "ATA: Drive 0 has {} sectors ({} MB)",
             sectors,
             (sectors * ATA_SECTORS as u64) / 1024 / 1024
-        )
+        );
+
+        let mut buffer = [0u8; 512];
+
+        let _ = drive.read(ATADriveType::Parent, buffer.as_mut(), 0, 1);
+
+        crate::println!("{:X?}", buffer);
     }
-
-    let a = DRIVE_ID.lock().read()[0];
-
-    crate::println!("{:?}", a);
-
-    let mut buffer = [0u8; 512];
-
-    drive.read(ATADriveType::Parent, buffer.as_mut(), 0, 1);
-
-    crate::println!("{:X?}", buffer);
 }

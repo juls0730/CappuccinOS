@@ -37,11 +37,6 @@ impl Pic {
         return outb(self.command as u16, CMD_END_OF_INTERRUPT);
     }
 
-    // Reads the interrupt mask of this PIC.
-    fn read_mask(&mut self) -> u8 {
-        return inb(self.data as u16);
-    }
-
     // Write the interrupt mask of this PIC
     fn write_mask(&mut self, mask: u8) {
         return outb(self.data as u16, mask);
@@ -100,15 +95,13 @@ impl ChainedPics {
         io_wait();
     }
 
-    pub fn read_masks(&mut self) -> [u8; 2] {
-        [self.pics[0].read_mask(), self.pics[1].read_mask()]
-    }
-
     pub fn write_masks(&mut self, mask1: u8, mask2: u8) {
         self.pics[0].write_mask(mask1);
         self.pics[1].write_mask(mask2);
     }
 
+    // Keep for later if we want to use APIC later in the future
+    #[allow(dead_code)]
     pub fn disable(&mut self) {
         self.write_masks(0xFF, 0xFF);
     }
