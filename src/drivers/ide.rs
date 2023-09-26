@@ -1,4 +1,6 @@
-use core::mem::size_of;
+use core::{alloc::Layout, mem::size_of};
+
+use alloc::{alloc::alloc, alloc::dealloc, sync::Arc, vec::Vec};
 
 use crate::{
     arch::io::{inb, insw, inw, outb, outw},
@@ -6,7 +8,7 @@ use crate::{
     log_info,
 };
 
-const ATA_SECTORS: usize = 512;
+const ATA_SECTOR_SIZE: usize = 512;
 
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
@@ -278,20 +280,14 @@ impl Drive {
         return self.identify(drive).is_ok();
     }
 
-    pub fn read(
-        &self,
-        drive: ATADriveType,
-        buffer: &mut [u8],
-        sector: u64,
-        sector_count: u16,
-    ) -> Result<(), ()> {
+    pub fn read(&self, drive: ATADriveType, sector: u64, sector_count: u16) -> Result<Vec<u8>, ()> {
         let selector = (drive as u8 + 0x20) | ((sector >> 24) & 0x0F) as u8;
 
         self.select(selector);
 
         self.await_busy();
 
-        let using_lba48 = if sector >= 0x10000000 { true } else { false };
+        let using_lba48 = sector >= (1 << 28) - 1;
 
         if using_lba48 {
             outw(
@@ -316,6 +312,8 @@ impl Drive {
 
             self.send_command(ATADriveCommand::ReadPIOExt);
         } else {
+            crate::println!("LBA28");
+
             outw(
                 self.io_port + ATADriveRegister::SectorCount0 as u16,
                 sector_count,
@@ -336,20 +334,35 @@ impl Drive {
             self.send_command(ATADriveCommand::ReadPIO);
         }
 
-        let words = buffer.as_mut_ptr() as *mut u16;
+        // sector count * 512 = bytes in array
+        let array_size = (sector_count as usize) * ATA_SECTOR_SIZE;
 
-        for _ in 0..sector_count {
+        // Allocate memory for the array that stores the sector data
+        let mut buffer = Vec::new();
+        buffer.reserve_exact(array_size);
+
+        for i in 0..sector_count {
             self.wait_for_drive_ready()
                 .map_err(|_| crate::log_error!("Error reading IDE Device"))?;
 
-            insw(
-                self.io_port + ATADriveRegister::Data as u16,
-                words,
-                ATA_SECTORS / size_of::<u16>(),
-            );
+            // # Safety
+            //
+            // We know that buffer is the exact size of count, so it will never panic:tm:
+            unsafe {
+                insw(
+                    self.io_port + ATADriveRegister::Data as u16,
+                    (buffer.as_mut_ptr() as *mut u16)
+                        .add((i as usize * ATA_SECTOR_SIZE) / size_of::<u16>()),
+                    ATA_SECTOR_SIZE / size_of::<u16>() as usize,
+                );
+            }
         }
 
-        return Ok(());
+        unsafe {
+            buffer.set_len(array_size);
+        }
+
+        return Ok(buffer);
     }
 }
 
@@ -388,13 +401,11 @@ fn ide_initialize(_bar0: u32, _bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         crate::log_info!(
             "ATA: Drive 0 has {} sectors ({} MB)",
             sectors,
-            (sectors * ATA_SECTORS as u64) / 1024 / 1024
+            (sectors * ATA_SECTOR_SIZE as u64) / 1024 / 1024
         );
 
-        let mut buffer = [0u8; 512];
+        let buffer = drive.read(ATADriveType::Parent, 0, 2);
 
-        let _ = drive.read(ATADriveType::Parent, buffer.as_mut(), 0, 1);
-
-        crate::println!("{:X?}", buffer);
+        crate::println!("{:#X?}", buffer);
     }
 }

@@ -54,7 +54,7 @@ impl Console {
 
         // Enable graphical output
         if framebuffer.is_some() {
-            self.feature_bits.lock().write().set_bit(0);
+            // self.feature_bits.lock().write().set_bit(0);
         } else {
             return;
         }

@@ -54,8 +54,13 @@ pub fn inw(port: u16) -> u16 {
     return value;
 }
 
+/// Reads `count` 16-bit values from the specified `port` into the `buffer`.
+///
+/// # Safety
+///
+/// This function panics if the supplied buffer's size is smaller than `count`.
 #[inline(always)]
-pub fn insw(port: u16, buffer: *mut u16, count: usize) {
+pub unsafe fn insw(port: u16, buffer: *mut u16, count: usize) {
     unsafe {
         asm!("cld",
             "rep insw",
