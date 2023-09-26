@@ -406,6 +406,6 @@ fn ide_initialize(_bar0: u32, _bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
 
         let buffer = drive.read(ATADriveType::Parent, 0, 2);
 
-        crate::println!("{:#X?}", buffer);
+        crate::println!("{:X?}", buffer);
     }
 }
