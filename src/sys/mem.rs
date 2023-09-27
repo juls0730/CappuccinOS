@@ -163,15 +163,18 @@ pub fn init() {
 
     crate::println!("====== MEMORY MAP ======");
     for entry in memmap.iter() {
+        let label = label_units(entry.len as usize);
+
         crate::println!(
-            "[ {:#018X?} ] Type: \033[{};m{:?}\033[0;m Size: {:?}",
+            "[ {:#018X?} ] Type: \033[{};m{:?}\033[0;m Size: {} {}",
             entry.base..entry.base + entry.len,
             match entry.typ {
                 limine::MemoryMapEntryType::Usable => 32,
                 _ => 31,
             },
             entry.typ,
-            entry.len as usize
+            label.0,
+            label.1
         )
     }
 }

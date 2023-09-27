@@ -1,6 +1,7 @@
 ARTIFACTS_PATH = bin
 IMAGE_NAME = CappuccinOS.iso
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
+INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
 IMAGE_PATH = ${ARTIFACTS_PATH}/${IMAGE_NAME}
 CARGO_OPTS = --target=src/arch/${ARCH}/${ARCH}-unknown-none.json
 QEMU_OPTS = -drive format=raw,file=${IMAGE_PATH}
@@ -24,19 +25,26 @@ ifeq (${ARCH},)
 	ARCH := x86_64
 endif
 
-.PHONY: all clean run build line-count
+.PHONY: all check prepare-bin-files copy-initramfs-files compile-initramfs copy-iso-files build-iso compile-bootloader compile-binaries ovmf clean run build line-count
 
 all: build
 
-build: prepare-bin-files compile-bootloader compile-binaries build-iso
+build: prepare-bin-files compile-bootloader compile-binaries compile-initramfs build-iso
 
 check: 
 		cargo check
 
 prepare-bin-files:
-		rm -rf ${ISO_PATH}
+		rm -rf ${ARTIFACTS_PATH}/*
 		mkdir -p ${ARTIFACTS_PATH}
 		mkdir -p ${ISO_PATH}
+		mkdir -p ${INITRAMFS_PATH}
+
+copy-initramfs-files:
+		# Stub for now ;)
+
+compile-initramfs: copy-initramfs-files
+		python scripts/initramfs.py ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.gz
 
 copy-iso-files:
 		# Limine files
@@ -48,6 +56,7 @@ copy-iso-files:
 
 		# OS files
 		cp -v target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf ${ISO_PATH}/boot
+		cp -v ${ARTIFACTS_PATH}/initramfs.gz ${ISO_PATH}/boot
 
 		# Application files
 		mkdir -p ${ISO_PATH}/bin

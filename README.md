@@ -6,6 +6,8 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 - [X] Hardware interrupts
 - [X] PS/2 Keyboard support
 - [X] ANSI color codes in console
+- [ ] Externalized kernel modules
+    - [ ] Initramfs
 - [ ] Use APIC instead of PIC
 - [ ] Roll my own bootloader
     - [ ] x86 CPU support
@@ -39,6 +41,7 @@ Before building CappuccinOS, make sure you have the following installed on your 
 - binutils
 - sgdisk
 - mtools
+- python
 - qemu (optional)
 
 Clone the repo:
@@ -68,9 +71,21 @@ If you would like to target another architecture other than x86_64, set the `ARC
 
 Run on a bare metal machine by flashing to a USB stick or hard drive:
 ```
-sudo dd if=bin/CappuccinOS.iso of=/dev/sdX && sync
+sudo dd if=bin/CappuccinOS.iso of=/dev/sdX bs=1M && sync
 ```
 **Be careful not to overwrite your hard drive when using `dd`!**
+
+## Credits an attributions
+Inspiration was mainly from [JDH's Tetris OS](https://www.youtube.com/watch?v=FaILnmUYS_U), mixed with a growing interest in low level in general and an interest in learning rust (yeah, I started this project with not that much rust experience, maybe a CLI app or two).
+
+Some Resources I used over the creation of CappuccinOS:
+- [OSDev wiki](https://wiki.osdev.org)
+- Wikipedia on various random things
+
+And mostly for examples of how people did stuff I used these (projects made by people who actually have a clue what they're doing).
+- [MOROS](https://github.com/vinc/moros)
+- [Felix](https://github.com/mrgian/felix)
+- [mOS](https://github.com/Moldytzu/mOS)
 
 ## License
 CappuccinOS is license under the MIT License. Feel free to modify and distribute in accordance with the license.

@@ -13,6 +13,9 @@ mod usr;
 
 use drivers::serial;
 use libs::util::hcf;
+use limine::ModuleRequest;
+
+pub static MODULE_REQUEST: ModuleRequest = ModuleRequest::new(0);
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
@@ -28,6 +31,18 @@ pub extern "C" fn _start() -> ! {
     drivers::pci::enumerate_pci_bus();
 
     drivers::ide::init();
+
+    if let Some(module_response) = MODULE_REQUEST.get_response().get() {
+        let initramfs = &module_response.modules()[0];
+        crate::println!("Initramfs is located at: {:#018X?}", unsafe {
+            initramfs.base.as_ptr().unwrap()
+                ..initramfs
+                    .base
+                    .as_ptr()
+                    .unwrap()
+                    .add(initramfs.length as usize)
+        });
+    }
 
     usr::shell::init_shell();
 
