@@ -64,7 +64,7 @@ copy-iso-files:
 			cp target/${ARCH}-unknown-none/${MODE}/{}.elf ${ISO_PATH}/bin/{}
 
 		touch ${ISO_PATH}/example.txt
-		echo "Hello World" > ${ISO_PATH}/example.txt
+		echo "Hello World from the hard drive" > ${ISO_PATH}/example.txt
 
 build-iso: copy-iso-files
 		rm -f ${IMAGE_PATH}

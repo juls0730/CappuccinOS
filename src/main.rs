@@ -30,7 +30,7 @@ pub extern "C" fn _start() -> ! {
 
     drivers::pci::enumerate_pci_bus();
 
-    drivers::ide::init();
+    drivers::storage::ide::init();
 
     if let Some(module_response) = MODULE_REQUEST.get_response().get() {
         let initramfs = &module_response.modules()[0];

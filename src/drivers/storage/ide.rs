@@ -1,12 +1,17 @@
-use core::{alloc::Layout, mem::size_of};
+use core::mem::size_of;
 
-use alloc::{alloc::alloc, alloc::dealloc, sync::Arc, vec::Vec};
+use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
-    arch::io::{inb, insw, inw, outb, outw},
+    arch::io::{inb, insw, inw, outb},
+    drivers::{
+        fs::fat::{BIOSParameterBlock, ExtendedBIOSParameterBlock, FSInfo},
+        storage::drive::{GPTBlock, GPTPartitionEntry},
+    },
     libs::mutex::Mutex,
-    log_info,
 };
+
+use super::drive::BlockDevice;
 
 const ATA_SECTOR_SIZE: usize = 512;
 
@@ -305,7 +310,7 @@ impl ATABus {
         &self,
         drive: ATADriveType,
         sector: u64,
-        sector_count: u16,
+        sector_count: usize,
     ) -> Result<Arc<[u8]>, ()> {
         self.await_busy();
 
@@ -436,8 +441,10 @@ impl ATADrive {
             drive_type: drive,
         });
     }
+}
 
-    pub fn read(&self, sector: u64, sector_count: u16) -> Result<Arc<[u8]>, ()> {
+impl BlockDevice for ATADrive {
+    fn read(&self, sector: u64, sector_count: usize) -> Result<Arc<[u8]>, ()> {
         if (sector + sector_count as u64) > self.sector_count() as u64 {
             return Err(());
         }
@@ -445,10 +452,14 @@ impl ATADrive {
         return self.bus.read(self.drive_type, sector, sector_count);
     }
 
-    pub fn sector_count(&self) -> u32 {
+    fn sector_count(&self) -> u64 {
         let sectors = self.identify_data[120..].as_ptr();
 
-        return unsafe { *(sectors as *const u32) };
+        return unsafe { *(sectors as *const u32) } as u64;
+    }
+
+    fn write(&self, sector: u64, data: &[u8]) -> Result<(), ()> {
+        panic!("TODO: ATA Drive writes");
     }
 }
 
@@ -500,8 +511,95 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
             (sectors as u64 * ATA_SECTOR_SIZE as u64) / 1024 / 1024
         );
 
-        let buffer = drive.read(0, 2);
+        let mbr_sector = drive.read(0, 1).expect("Failed to read first sector");
 
-        crate::println!("{:X?}", buffer);
+        let signature = [mbr_sector[510], mbr_sector[511]];
+
+        if signature[0] != 0x55 && signature[1] != 0xAA {
+            panic!("First sector is not MBR");
+        }
+
+        let gpt_sector = drive.read(1, 1).expect("Failed to read sector 2");
+
+        let mut array = [0u8; 512];
+        array.copy_from_slice(&gpt_sector[..512]);
+
+        let gpt = GPTBlock::new(&array);
+
+        let mut partitions: Vec<GPTPartitionEntry> =
+            Vec::with_capacity(gpt.partition_entry_count as usize);
+
+        let partition_sector = drive
+            .read(
+                2,
+                (gpt.partition_entry_count * gpt.partition_entry_size) as usize / ATA_SECTOR_SIZE,
+            )
+            .expect("Failed to read partition table");
+
+        for i in 0..gpt.partition_entry_count {
+            let entry_offset = (i * gpt.partition_entry_size) as usize;
+
+            let partition_type_guid: [u8; 16] = partition_sector[entry_offset..entry_offset + 16]
+                .try_into()
+                .unwrap();
+
+            let mut is_zero = true;
+
+            for &j in partition_type_guid.iter() {
+                if j != 0 {
+                    is_zero = false;
+                }
+            }
+
+            if is_zero {
+                continue;
+            }
+
+            let start_sector = u64::from_le_bytes(
+                partition_sector[entry_offset + 32..entry_offset + 40]
+                    .try_into()
+                    .unwrap(),
+            );
+            let end_sector = u64::from_le_bytes(
+                partition_sector[entry_offset + 40..entry_offset + 48]
+                    .try_into()
+                    .unwrap(),
+            );
+
+            // Store the parsed information in the partition_entries array
+            partitions.push(GPTPartitionEntry {
+                partition_type_guid,
+                start_sector,
+                end_sector,
+            });
+        }
+
+        for partition in partitions.iter() {
+            crate::println!(
+                "Reading partition from sector: {} to {}, totaling: {} sectors",
+                partition.start_sector,
+                partition.end_sector,
+                (partition.end_sector - partition.start_sector) as usize
+            );
+
+            let bpb_bytes = drive
+                .read(partition.start_sector, 1)
+                .expect("Failed to read FAT32 BIOS Parameter Block!");
+
+            let bpb = BIOSParameterBlock::from_bytes(bpb_bytes.clone());
+            let ebpb = ExtendedBIOSParameterBlock::from_bytes(bpb_bytes);
+
+            crate::println!("{:?} {:?}", bpb, ebpb);
+
+            let fsinfo_bytes = drive
+                .read(partition.start_sector + ebpb.fsinfo_sector as u64, 1)
+                .expect("Failed to read FSInfo sector!");
+
+            let fsinfo = FSInfo::from_bytes(fsinfo_bytes);
+
+            crate::println!("{:?}", fsinfo);
+        }
+
+        crate::println!("{:?}", partitions);
     }
 }
