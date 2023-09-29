@@ -5,7 +5,7 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use crate::{
     arch::io::{inb, insw, inw, outb},
     drivers::{
-        fs::fat::{BIOSParameterBlock, ExtendedBIOSParameterBlock, FSInfo},
+        fs::fat::{self, BIOSParameterBlock, ExtendedBIOSParameterBlock, FSInfo},
         storage::drive::{GPTBlock, GPTPartitionEntry},
     },
     libs::mutex::Mutex,
@@ -598,6 +598,20 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
             let fsinfo = FSInfo::from_bytes(fsinfo_bytes);
 
             crate::println!("{:?}", fsinfo);
+
+            // TODO
+            crate::println!(
+                "{}",
+                ebpb.root_dir_cluster as u64 * bpb.sectors_per_cluster as u64
+            );
+
+            let fat = drive.read(
+                partition.start_sector
+                    + ebpb.root_dir_cluster as u64 * bpb.sectors_per_cluster as u64,
+                4,
+            );
+
+            crate::println!("{:?}", fat);
         }
 
         crate::println!("{:?}", partitions);
