@@ -1,6 +1,6 @@
 use core::mem::size_of;
 
-use alloc::{string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 
 use crate::{
     arch::io::{inb, insw, inw, outb},
@@ -513,9 +513,9 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
 
         let mbr_sector = drive.read(0, 1).expect("Failed to read first sector");
 
-        let signature = [mbr_sector[510], mbr_sector[511]];
+        let signature: [u8; 2] = mbr_sector[510..].try_into().unwrap();
 
-        if signature[0] != 0x55 && signature[1] != 0xAA {
+        if u16::from_le_bytes(signature[0..2].try_into().unwrap()) != 0xAA55 {
             panic!("First sector is not MBR");
         }
 
@@ -574,44 +574,10 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
             });
         }
 
-        for partition in partitions.iter() {
-            crate::println!(
-                "Reading partition from sector: {} to {}, totaling: {} sectors",
-                partition.start_sector,
-                partition.end_sector,
-                (partition.end_sector - partition.start_sector) as usize
-            );
+        for &partition in partitions.iter() {
+            let fat_fs = fat::FATFS::new(drive, partition);
 
-            let bpb_bytes = drive
-                .read(partition.start_sector, 1)
-                .expect("Failed to read FAT32 BIOS Parameter Block!");
-
-            let bpb = BIOSParameterBlock::from_bytes(bpb_bytes.clone());
-            let ebpb = ExtendedBIOSParameterBlock::from_bytes(bpb_bytes);
-
-            crate::println!("{:?} {:?}", bpb, ebpb);
-
-            let fsinfo_bytes = drive
-                .read(partition.start_sector + ebpb.fsinfo_sector as u64, 1)
-                .expect("Failed to read FSInfo sector!");
-
-            let fsinfo = FSInfo::from_bytes(fsinfo_bytes);
-
-            crate::println!("{:?}", fsinfo);
-
-            // TODO
-            crate::println!(
-                "{}",
-                ebpb.root_dir_cluster as u64 * bpb.sectors_per_cluster as u64
-            );
-
-            let fat = drive.read(
-                partition.start_sector
-                    + ebpb.root_dir_cluster as u64 * bpb.sectors_per_cluster as u64,
-                4,
-            );
-
-            crate::println!("{:?}", fat);
+            fat_fs.test();
         }
 
         crate::println!("{:?}", partitions);

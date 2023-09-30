@@ -6,7 +6,7 @@ pub trait BlockDevice {
     fn write(&self, sector: u64, data: &[u8]) -> Result<(), ()>;
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct GPTPartitionEntry {
     pub partition_type_guid: [u8; 16],
     pub start_sector: u64,

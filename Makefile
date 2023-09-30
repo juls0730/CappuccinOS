@@ -63,6 +63,8 @@ copy-iso-files:
 		basename -s .rs src/bin/*.rs | xargs -I {} \
 			cp target/${ARCH}-unknown-none/${MODE}/{}.elf ${ISO_PATH}/bin/{}
 
+		touch ${ISO_PATH}/boot/AAAAAAAAɍ.123
+
 		touch ${ISO_PATH}/example.txt
 		echo "Hello World from the hard drive" > ${ISO_PATH}/example.txt
 

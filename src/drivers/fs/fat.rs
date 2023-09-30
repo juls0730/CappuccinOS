@@ -1,11 +1,12 @@
 use alloc::{
+    boxed::Box,
     format,
     string::{String, ToString},
     sync::Arc,
     vec::Vec,
 };
 
-use crate::drivers::storage::drive::BlockDevice;
+use crate::drivers::storage::drive::{BlockDevice, GPTPartitionEntry};
 
 enum FatType {
     Fat12,
@@ -13,22 +14,23 @@ enum FatType {
     Fat32,
 }
 
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct BIOSParameterBlock {
-    _jmp_instruction: [u8; 3],
-    pub oem_identifier: [u8; 8],
-    pub bytes_per_sector: u16,
-    pub sectors_per_cluster: u8,
-    pub reserved_sectors: u16,
-    pub fat_count: u8,
-    pub root_directory_count: u16,
-    pub total_sectors: u16, // equal to zero when sector count is more than 65535
-    pub media_descriptor_type: u8,
-    pub sectors_per_fat: u16, // Fat12/Fat16 only
-    pub sectors_per_track: u16,
-    pub head_count: u16,
-    pub hidden_sectors: u32,
-    pub large_sector_count: u32,
+    _jmp_instruction: [u8; 3],     // EB 58 90
+    pub oem_identifier: [u8; 8],   // MTOO4043 (hey, mtools)
+    pub bytes_per_sector: u16,     // 00 02 (little endian so 512)
+    pub sectors_per_cluster: u8,   // 01
+    pub reserved_sectors: u16,     // 20 00 (32)
+    pub fat_count: u8,             // 02
+    pub root_directory_count: u16, // 00 00 (what)
+    pub total_sectors: u16,        // equal to zero when sector count is more than 65535
+    pub media_descriptor_type: u8, // F0
+    pub sectors_per_fat: u16,      // Fat12/Fat16 only
+    pub sectors_per_track: u16,    // 3F 00 (63)
+    pub head_count: u16,           // 10 00 (16)
+    pub hidden_sectors: u32,       // 00 00 00 00
+    pub large_sector_count: u32,   // 00 F8 01 00 (129024)
 }
 
 impl BIOSParameterBlock {
@@ -68,23 +70,24 @@ impl BIOSParameterBlock {
     }
 }
 
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct ExtendedBIOSParameterBlock {
-    pub sectors_per_fat: u32,
-    pub flags: [u8; 2],
-    pub fat_version: u16,
-    pub root_dir_cluster: u32,
-    pub fsinfo_sector: u16,
-    pub backup_bootsector: u16,
-    _reserved: [u8; 12],
-    pub drive_number: u8,
-    _reserved2: u8,
-    pub signature: u8, // either 0x28 of 0x29
-    pub volume_id: u32,
-    pub volume_label: [u8; 11],
+    pub sectors_per_fat: u32,           // E1 03 00 00 (993, wtf)
+    pub flags: [u8; 2],                 // 00 00
+    pub fat_version: u16,               // 00 00
+    pub root_dir_cluster: u32,          // 2C 00 00 00 (2)
+    pub fsinfo_sector: u16,             // 01 00 (1)
+    pub backup_bootsector: u16,         // 06 00 (6)
+    _reserved: [u8; 12],                // all zero
+    pub drive_number: u8,               // 00
+    _reserved2: u8,                     // 00
+    pub signature: u8,                  // either 0x28 of 0x29: 29
+    pub volume_id: u32,                 // Varies
+    pub volume_label: [u8; 11],         // "NO NAME    "
     _system_identifier_string: [u8; 8], // Always "FAT32   " but never trust the contents of this string (for some reason)
-    _boot_code: [u8; 420],
-    _bootable_signature: u16, // 0xAA55
+    _boot_code: [u8; 420],              // ~~code~~
+    _bootable_signature: u16,           // 0xAA55
 }
 
 impl ExtendedBIOSParameterBlock {
@@ -126,6 +129,7 @@ impl ExtendedBIOSParameterBlock {
     }
 }
 
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct FSInfo {
     pub lead_signature: u32,
@@ -156,5 +160,170 @@ impl FSInfo {
             _reserved2,
             trail_signature,
         };
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, PartialEq)]
+enum FileEntryAttributes {
+    ReadOnly = 0x01,
+    Hidden = 0x02,
+    System = 0x04,
+    VolumeId = 0x08,
+    Directory = 0x10,
+    Archive = 0x20, // basically any file
+    LongFileName = 0xE5,
+}
+
+#[repr(packed)]
+#[derive(Debug)]
+struct FileEntry {
+    filename: [u8; 8],
+    extension: [u8; 3],
+    attributes: u8,
+    _reserved: u8,
+    creation_tenths: u8,
+    creation_time: u16,
+    creation_date: u16,
+    accessed_date: u16,
+    high_first_cluster_number: u16, // The high 16 bits of this entry's first cluster number. For FAT 12 and FAT 16 this is always zero.
+    modified_time: u16,
+    modified_date: u16,
+    low_first_cluster_number: u16,
+    file_size: u32,
+}
+
+pub struct FATFS<'a> {
+    drive: Box<&'a dyn BlockDevice>,
+    bpb: BIOSParameterBlock,
+    ebpb: ExtendedBIOSParameterBlock,
+    fs_info: FSInfo,
+    partition: GPTPartitionEntry,
+}
+
+impl<'a> FATFS<'a> {
+    pub fn new(drive: &'a dyn BlockDevice, partition: GPTPartitionEntry) -> Self {
+        let bpb_bytes = drive
+            .read(partition.start_sector, 1)
+            .expect("Failed to read FAT32 BIOS Parameter Block!");
+
+        let bpb = BIOSParameterBlock::from_bytes(bpb_bytes.clone());
+        let ebpb = ExtendedBIOSParameterBlock::from_bytes(bpb_bytes);
+
+        let fsinfo_bytes = drive
+            .read(partition.start_sector + ebpb.fsinfo_sector as u64, 1)
+            .expect("Failed to read FSInfo sector!");
+
+        let fs_info = FSInfo::from_bytes(fsinfo_bytes);
+
+        return Self {
+            drive: Box::new(drive),
+            bpb,
+            ebpb,
+            fs_info,
+            partition,
+        };
+    }
+
+    pub fn test(&self) {
+        let bpb = &self.bpb;
+        let ebpb = &self.ebpb;
+
+        let total_sectors = bpb.large_sector_count;
+        let fat_size = ebpb.sectors_per_fat;
+        let root_dir_sectors =
+            ((bpb.root_directory_count * 32) + (bpb.bytes_per_sector - 1)) / bpb.bytes_per_sector;
+        let first_data_sector = bpb.reserved_sectors as u32
+            + (bpb.fat_count as u32 * fat_size)
+            + root_dir_sectors as u32;
+        let first_fat_sector = bpb.reserved_sectors;
+        let total_data_sectors = total_sectors
+            - (bpb.reserved_sectors as u32
+                + (bpb.fat_count as u32 * fat_size)
+                + root_dir_sectors as u32);
+        let total_clusters = total_data_sectors / bpb.sectors_per_cluster as u32;
+        let first_root_dir = first_data_sector - root_dir_sectors as u32;
+        let root_cluster = ebpb.root_dir_cluster;
+        let cluster = 0;
+        let first_sector_of_cluster =
+            ((cluster - 2) * bpb.sectors_per_cluster as i32) as i32 + first_data_sector as i32;
+
+        // TODO
+        crate::println!(
+            "First Data sector offset: {:#X}, First FAT Sector offset: {:#X}, First sector of cluster offset: {:#X}",
+            (self.partition.start_sector + first_data_sector as u64) * 512,
+            (self.partition.start_sector + first_fat_sector as u64) * 512,
+            (self.partition.start_sector + first_sector_of_cluster as u64) * 512
+        );
+
+        let fat = self
+            .drive
+            .read(self.partition.start_sector + first_fat_sector as u64, 1)
+            .expect("Failed to read FAT!");
+
+        let data_sector = self
+            .drive
+            .read(self.partition.start_sector + first_data_sector as u64, 1)
+            .expect("Failed to read FATFS data sector!");
+
+        // Loop over entries
+        let mut i: usize = 0;
+        // Long file name is stored outsize because long filename and the real entry on separate entries
+        let mut long_filename: Vec<u8> = Vec::new();
+        let search = "example.txt";
+
+        let search_parts: Vec<&str> = search.split(".").collect();
+
+        loop {
+            let bytes: [u8; 32] = data_sector[(i * 32)..((i + 1) * 32)].try_into().unwrap();
+            let first_byte = bytes[0];
+
+            let file_entry: FileEntry;
+
+            unsafe {
+                file_entry = core::mem::transmute(bytes);
+            }
+
+            i += 1;
+
+            if first_byte == 0x00 {
+                break; // End of directory listing
+            }
+
+            if first_byte == 0xE5 {
+                continue; // Directory is unused, ignore it
+            } else if file_entry.attributes == FileEntryAttributes::LongFileName as u8 {
+                // read long filename somehow
+            } else {
+                // step 5
+            }
+
+            let filename = core::str::from_utf8(&file_entry.filename).unwrap();
+            let extension = core::str::from_utf8(&file_entry.extension).unwrap();
+
+            if filename.contains(&search_parts[0].to_ascii_uppercase())
+                && extension.contains(&search_parts[1].to_ascii_uppercase())
+            {
+                let file_cluster_number = u32::from_le(file_entry.low_first_cluster_number as u32);
+                let file_sector = self.partition.start_sector
+                    + first_sector_of_cluster as u64
+                    + (file_cluster_number as u64 * self.bpb.sectors_per_cluster as u64);
+
+                crate::println!("start: {} data: {first_data_sector} file_cluster: {file_cluster_number}, sects per clust: {}", self.partition.start_sector, self.bpb.sectors_per_cluster);
+
+                crate::println!("Found {} at sector {file_sector}", search);
+
+                let data = self.drive.read(file_sector, 1).unwrap();
+
+                let str_data = &data[0..file_entry.file_size as usize];
+
+                crate::println!("File data: {}", core::str::from_utf8(str_data).unwrap());
+            }
+
+            crate::println!("{:X?}", file_entry);
+        }
+
+        crate::println!("FAT: {:?}", fat);
+        crate::println!("{:?}", data_sector);
     }
 }
