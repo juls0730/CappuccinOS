@@ -31,14 +31,20 @@ pub fn fill_screen(color: u32, mirror_buffer: Option<Framebuffer>) {
 }
 
 pub fn put_char(
-    character: char,
+    mut character: char,
     cx: u16,
     cy: u16,
-    fg: u32,
+    mut fg: u32,
     bg: u32,
     mirror_buffer: Option<Framebuffer>,
 ) {
     let font = font::G_8X16_FONT;
+
+    if character as usize > u8::MAX as usize {
+        character = '?';
+        fg = 0xFF0000;
+    }
+
     let character_array = font[character as usize];
 
     let framebuffer =

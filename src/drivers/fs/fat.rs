@@ -172,12 +172,25 @@ enum FileEntryAttributes {
     VolumeId = 0x08,
     Directory = 0x10,
     Archive = 0x20, // basically any file
-    LongFileName = 0xE5,
+    LongFileName = 0x0F,
 }
 
 #[repr(packed)]
 #[derive(Debug)]
-struct FileEntry {
+struct LongFileName {
+    entry_order: u8,
+    first_characters: [u16; 5],
+    attribute: u8,       // always 0x0F
+    long_entry_type: u8, // zero for name entries
+    checksum: u8,
+    second_characters: [u16; 6],
+    _always_zero: [u8; 2],
+    final_characters: [u16; 2],
+}
+
+#[repr(packed)]
+#[derive(Debug)]
+struct FileEntry /*<'a>*/ {
     filename: [u8; 8],
     extension: [u8; 3],
     attributes: u8,
@@ -191,6 +204,7 @@ struct FileEntry {
     modified_date: u16,
     low_first_cluster_number: u16,
     file_size: u32,
+    // long_file_name: Option<&'a str>,
 }
 
 pub struct FATFS<'a> {
@@ -245,8 +259,7 @@ impl<'a> FATFS<'a> {
         let first_root_dir = first_data_sector - root_dir_sectors as u32;
         let root_cluster = ebpb.root_dir_cluster;
         let cluster = 0;
-        let first_sector_of_cluster =
-            ((cluster - 2) * bpb.sectors_per_cluster as i32) as i32 + first_data_sector as i32;
+        let first_sector_of_cluster = self.cluster_to_sector(cluster);
 
         // TODO
         crate::println!(
@@ -263,67 +276,161 @@ impl<'a> FATFS<'a> {
 
         let data_sector = self
             .drive
-            .read(self.partition.start_sector + first_data_sector as u64, 1)
+            .read(
+                self.partition.start_sector + first_data_sector as u64 + 6,
+                1,
+            )
             .expect("Failed to read FATFS data sector!");
 
         // Loop over entries
         let mut i: usize = 0;
         // Long file name is stored outsize because long filename and the real entry on separate entries
-        let mut long_filename: Vec<u8> = Vec::new();
-        let search = "example.txt";
+        let mut long_filename: Vec<LongFileName> = Vec::new();
+        let search = "CappuccinOS.elf";
 
-        let search_parts: Vec<&str> = search.split(".").collect();
+        let mut long_filename_string: Option<String> = None;
 
         loop {
-            let bytes: [u8; 32] = data_sector[(i * 32)..((i + 1) * 32)].try_into().unwrap();
+            let bytes: [u8; core::mem::size_of::<FileEntry>()] =
+                data_sector[(i * 32)..((i + 1) * 32)].try_into().unwrap();
             let first_byte = bytes[0];
 
             let file_entry: FileEntry;
 
-            unsafe {
-                file_entry = core::mem::transmute(bytes);
-            }
-
             i += 1;
 
+            // Step 1
             if first_byte == 0x00 {
                 break; // End of directory listing
             }
 
+            // Step 2
             if first_byte == 0xE5 {
                 continue; // Directory is unused, ignore it
-            } else if file_entry.attributes == FileEntryAttributes::LongFileName as u8 {
-                // read long filename somehow
+            } else if bytes[11] == FileEntryAttributes::LongFileName as u8 {
+                // Entry is LFN (step 3)
+                // read long filename somehow (step 4)
+                let long_filename_part: LongFileName;
+
+                unsafe {
+                    long_filename_part = core::mem::transmute(bytes);
+                }
+                long_filename.push(long_filename_part);
+                continue;
             } else {
                 // step 5
+                unsafe {
+                    file_entry = core::mem::transmute(bytes);
+                }
+
+                // step 6
+                if !long_filename.is_empty() {
+                    // Make fileEntry with LFN (step 7)
+                    let mut string: Vec<u16> = Vec::with_capacity(long_filename.len() * 13);
+
+                    for i in 0..long_filename.len() {
+                        let i = (long_filename.len() - 1) - i;
+                        let long_filename = &long_filename[i];
+
+                        let mut character_bytes = Vec::new();
+                        let characters = long_filename.first_characters;
+
+                        character_bytes.extend_from_slice(&characters);
+                        let characters = long_filename.second_characters;
+
+                        character_bytes.extend_from_slice(&characters);
+                        let characters = long_filename.final_characters;
+
+                        character_bytes.extend_from_slice(&characters);
+
+                        // remove 0x0000 characters and 0xFFFF characters
+                        character_bytes.retain(|&x| x != 0xFFFF && x != 0x0000);
+
+                        for &le_character in character_bytes.iter() {
+                            // Convert little-endian u16 to native-endian u16
+                            let native_endian_value = u16::from_le(le_character);
+                            string.push(native_endian_value);
+                        }
+                    }
+                    long_filename_string = Some(String::from_utf16(&string).unwrap());
+
+                    crate::println!("Long file name: {:?}", long_filename_string);
+                    long_filename.clear();
+                }
             }
 
-            let filename = core::str::from_utf8(&file_entry.filename).unwrap();
-            let extension = core::str::from_utf8(&file_entry.extension).unwrap();
+            if search.len() < 11 {
+                let search_parts: Vec<&str> = search.split(".").collect();
 
-            if filename.contains(&search_parts[0].to_ascii_uppercase())
-                && extension.contains(&search_parts[1].to_ascii_uppercase())
-            {
-                let file_cluster_number = u32::from_le(file_entry.low_first_cluster_number as u32);
-                let file_sector = self.partition.start_sector
-                    + first_sector_of_cluster as u64
-                    + (file_cluster_number as u64 * self.bpb.sectors_per_cluster as u64);
+                let filename = core::str::from_utf8(&file_entry.filename).unwrap();
+                let extension = core::str::from_utf8(&file_entry.extension).unwrap();
 
-                crate::println!("start: {} data: {first_data_sector} file_cluster: {file_cluster_number}, sects per clust: {}", self.partition.start_sector, self.bpb.sectors_per_cluster);
+                if !filename.contains(&search_parts[0].to_ascii_uppercase())
+                    || !extension.contains(&search_parts[1].to_ascii_uppercase())
+                {
+                    continue;
+                }
+
+                let file_cluster = u32::from_le(file_entry.low_first_cluster_number as u32);
+                let file_sector = self.partition.start_sector as usize
+                    + self.cluster_to_sector(file_cluster as usize);
+
+                // crate::println!("start: {} data: {first_data_sector} file_cluster: {file_cluster_number}, sects per clust: {}", self.partition.start_sector, self.bpb.sectors_per_cluster);
 
                 crate::println!("Found {} at sector {file_sector}", search);
 
-                let data = self.drive.read(file_sector, 1).unwrap();
+                let data = self.drive.read(file_sector as u64, 1).unwrap();
 
                 let str_data = &data[0..file_entry.file_size as usize];
 
                 crate::println!("File data: {}", core::str::from_utf8(str_data).unwrap());
+
+                break;
+            } else {
+                // Long file name
+                if long_filename_string != Some(search.to_string()) {
+                    continue;
+                }
+
+                crate::println!("Found file: {:?}", file_entry);
+
+                let file_cluster = u32::from_le(file_entry.low_first_cluster_number as u32);
+                let file_sector = self.partition.start_sector as usize
+                    + self.cluster_to_sector(file_cluster as usize);
+
+                // crate::println!("start: {} data: {first_data_sector} file_cluster: {file_cluster_number}, sects per clust: {}", self.partition.start_sector, self.bpb.sectors_per_cluster);
+
+                crate::println!(
+                    "Found {} at sector {file_sector} size: {}",
+                    search,
+                    (file_entry.file_size / 512) as usize
+                );
+
+                let data = self.drive.read(file_sector as u64, 1).unwrap();
+
+                crate::println!("File data: {:X?}", data);
+
+                break;
             }
 
-            crate::println!("{:X?}", file_entry);
+            // crate::println!("{:X?}", file_entry);
         }
 
-        crate::println!("FAT: {:?}", fat);
-        crate::println!("{:?}", data_sector);
+        // crate::println!("FAT: {:?}", fat);
+        // crate::println!("{:?}", data_sector);
+    }
+
+    fn cluster_to_sector(&self, cluster: usize) -> usize {
+        let fat_size = self.ebpb.sectors_per_fat;
+        let root_dir_sectors = ((self.bpb.root_directory_count * 32)
+            + (self.bpb.bytes_per_sector - 1))
+            / self.bpb.bytes_per_sector;
+
+        let first_data_sector = self.bpb.reserved_sectors as u32
+            + (self.bpb.fat_count as u32 * fat_size)
+            + root_dir_sectors as u32;
+
+        return ((cluster - 2) as isize * self.bpb.sectors_per_cluster as isize) as usize
+            + first_data_sector as usize;
     }
 }
