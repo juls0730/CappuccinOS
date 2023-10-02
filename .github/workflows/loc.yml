@@ -8,7 +8,7 @@ jobs:
   count-loc:
     runs-on: ubuntu-latest
     outputs:
-      output1: ${{ steps.loc.outputs.loc }}
+      loc: ${{ steps.loc.outputs.loc }}
     steps:
       - name: Check out code
         uses: actions/checkout@v3
