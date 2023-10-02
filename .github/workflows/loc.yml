@@ -2,9 +2,7 @@ name: Count LOC and Update Badge
 
 on:
   push:
-    branches:
-      - main
-      - nightly
+    branches: [ "main", "nightly" ]
 
 jobs:
   count-loc:
@@ -12,6 +10,9 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v2
+
+      - name: Install cloc
+        run: sudo apt-get install cloc
 
       - name: Update README with LOC badge
         run: |
