@@ -17,5 +17,5 @@ jobs:
       - name: Update README with LOC badge
         run: |
           LOC_VALUE=$(make line-count | tail -n 1)
-          sed -i "s/{{LOC}}/$LOC_VALUE/g" README.md
+          echo "::set-output name=loc::$LOC_VALUE"
         shell: bash
