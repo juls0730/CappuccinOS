@@ -33,5 +33,5 @@ jobs:
           gistID: c16f26c4c5ab7f613fe758c913f9e71f
           filename: cappuccinos-loc.json
           label: Lines Of Code
-          message: $LOC
+          message: ${{ env.LOC }}
           color: blue
