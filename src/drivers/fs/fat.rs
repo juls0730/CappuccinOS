@@ -190,8 +190,8 @@ struct LongFileName {
 
 #[repr(packed)]
 #[derive(Debug)]
-struct FileEntry /*<'a>*/ {
-    filename: [u8; 8],
+struct FileEntry {
+    file_name: [u8; 8],
     extension: [u8; 3],
     attributes: u8,
     _reserved: u8,
@@ -204,7 +204,6 @@ struct FileEntry /*<'a>*/ {
     modified_date: u16,
     low_first_cluster_number: u16,
     file_size: u32,
-    // long_file_name: Option<&'a str>,
 }
 
 pub struct FATFS<'a> {
@@ -362,7 +361,7 @@ impl<'a> FATFS<'a> {
             if search.len() < 11 {
                 let search_parts: Vec<&str> = search.split(".").collect();
 
-                let filename = core::str::from_utf8(&file_entry.filename).unwrap();
+                let filename = core::str::from_utf8(&file_entry.file_name).unwrap();
                 let extension = core::str::from_utf8(&file_entry.extension).unwrap();
 
                 if !filename.contains(&search_parts[0].to_ascii_uppercase())

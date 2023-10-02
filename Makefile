@@ -64,6 +64,7 @@ copy-iso-files:
 			cp target/${ARCH}-unknown-none/${MODE}/{}.elf ${ISO_PATH}/bin/{}
 
 		touch ${ISO_PATH}/boot/AAAAAAAAɍ.123
+		touch ${ISO_PATH}/boot/test.tar.gz
 
 		touch ${ISO_PATH}/example.txt
 		echo "Hello World from the hard drive" > ${ISO_PATH}/example.txt
@@ -94,8 +95,7 @@ run: ${RUN_OPTS} build
 		qemu-system-x86_64 ${QEMU_OPTS}
 
 line-count:
-		git ls-files src | xargs wc -l
-
+		cloc --quiet --exclude-dir=bin --csv src/ | tail -n 1 | awk -F, '{print $$5}'
 clean:
 		cargo clean
 		rm -rf bin
