@@ -8,17 +8,16 @@ jobs:
   count-loc:
     runs-on: ubuntu-latest
     outputs:
-      output1: ${{ steps.step1.outputs.loc }}
+      output1: ${{ steps.loc.outputs.loc }}
     steps:
-      id: step1
       - name: Check out code
         uses: actions/checkout@v2
 
       - name: Install cloc
         run: sudo apt-get install cloc
 
-      - name: Update README with LOC badge
+      - id: loc
         run: |
           LOC_VALUE=$(make line-count | tail -n 1)
-          echo "loc=hello" >> "$GITHUB_OUTPUT"
+          echo "loc=${LOC_VALUE}" >> "$GITHUB_OUTPUT"
         shell: bash
