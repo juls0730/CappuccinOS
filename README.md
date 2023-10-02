@@ -1,6 +1,6 @@
 # CappuccinOS
 
-![LOC](https://img.shields.io/badge/Lines%20Of%20Code-{{LOC}}-blue)
+![LOC](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/juls0730/c16f26c4c5ab7f613fe758c913f9e71f/raw/cappuccinos-loc.json)
 
 CappuccinOS is a small x86-64 operating system written from scratch in rust. This README will guide you through the process of building and running CappuccinOS.
 
