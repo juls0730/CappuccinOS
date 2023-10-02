@@ -1,4 +1,4 @@
-name: Count LOC and Update Badge
+name: Count LOC 
 
 on:
   push:
@@ -7,7 +7,10 @@ on:
 jobs:
   count-loc:
     runs-on: ubuntu-latest
+    outputs:
+      output1: ${{ steps.step1.outputs.loc }}
     steps:
+      id: step1
       - name: Check out code
         uses: actions/checkout@v2
 
@@ -17,5 +20,5 @@ jobs:
       - name: Update README with LOC badge
         run: |
           LOC_VALUE=$(make line-count | tail -n 1)
-          echo "::set-output name=loc::$LOC_VALUE"
+          echo "loc=hello" >> "$GITHUB_OUTPUT"
         shell: bash
