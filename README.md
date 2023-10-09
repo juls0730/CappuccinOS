@@ -11,12 +11,16 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 - [X] ANSI color codes in console
 - [ ] Externalized kernel modules
     - [ ] Initramfs
-- [ ] Use APIC instead of PIC
+- [ ] SMP
+    - [ ] Use APIC instead of PIC
+- [ ] Pre-emptive multitasking
+    - [ ] Scheduling
 - [ ] Roll my own bootloader
     - [ ] x86 CPU support
     - [ ] armv8 CPU support
 - [ ] File system
-  - [ ] IDE Device support
+  - [ ] Block Device support
+    - [X] IDE device support
     - [ ] SATA device support
     - [ ] MMC/Nand device support
     - [ ] M.2 NVME device support
@@ -24,7 +28,6 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
   - [X] Basic I/O
     - [ ] Executing Programs
 - [ ] Lua interpreter
-- [ ] Multitasking
 - [ ] Memory management
 - [ ] Network support
 - [ ] GUI
@@ -53,21 +56,43 @@ git clone --recurse-submodules https://github.com/juls0730/CappuccinOS.git
 cd CappuccinOS
 ```
 
-Install rust, and switch to the nightly build:
+Install rust, if you haven't already:
 ```BASH
 curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain none
-rustup override set nightly
 ```
+
+Install the dependencies:
+<details>
+    <summary>Arch</summary>
+    
+    ```BASH
+    sudo pacman -S binutils gptfdisk mtools python
+    # Optionally
+    sudo pacman -S qemu-system-x86
+    ```
+</details>
+
+<details>
+    <summary>Ubuntu</summary>
+    These might not be perfect because I don't use Ubuntu, but they should be correct.
+
+    ```BASH
+    # Assuming Python is installed by default
+    sudo apt install binutils gdisk mtools
+    # Optionally
+    sudo apt install qemu
+    ```
+</details>
 
 ## Usage
-Build the image to `bin/CappuccinOS.iso`:
-```BASH
-make build
-```
-
 Run CappuccinOS with QEMU:
 ```BASH
 make run
+```
+
+If you would like to just build CappuccinOS but not run it:
+```BASH
+make build
 ```
 
 If you would like to target another architecture other than x86_64, set the `ARCH` variable to the a supported architecture. CappuccinOS is also built in release mode by default, if you would like to build CappuccinOS in debug mode, set the `MODE` variable to `debug`.
@@ -79,7 +104,7 @@ sudo dd if=bin/CappuccinOS.iso of=/dev/sdX bs=1M && sync
 **Be careful not to overwrite your hard drive when using `dd`!**
 
 ## Credits an attributions
-Inspiration was mainly from [JDH's Tetris OS](https://www.youtube.com/watch?v=FaILnmUYS_U), mixed with a growing interest in low level in general and an interest in learning rust (yeah, I started this project with not that much rust experience, maybe a CLI app or two).
+Inspiration was mainly from [JDH's Tetris OS](https://www.youtube.com/watch?v=FaILnmUYS_U), mixed with a growing interest in low level in general and an interest in learning rust (yeah, I started this project with not that much rust experience, maybe a CLI app or two, and trust me it shows).
 
 Some Resources I used over the creation of CappuccinOS:
 - [OSDev wiki](https://wiki.osdev.org)

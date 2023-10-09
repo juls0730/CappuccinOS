@@ -33,15 +33,27 @@ pub extern "C" fn _start() -> ! {
     drivers::storage::ide::init();
 
     if let Some(module_response) = MODULE_REQUEST.get_response().get() {
-        let initramfs = &module_response.modules()[0];
-        crate::println!("Initramfs is located at: {:#018X?}", unsafe {
-            initramfs.base.as_ptr().unwrap()
-                ..initramfs
-                    .base
-                    .as_ptr()
-                    .unwrap()
-                    .add(initramfs.length as usize)
-        });
+        let module_name = "initramfs.gz";
+
+        for module in module_response.modules() {
+            let c_path = module.path.to_str();
+            if c_path.is_none() {
+                continue;
+            }
+
+            if c_path.unwrap().to_str().unwrap().contains(module_name) {
+                let initramfs = module;
+
+                crate::println!("Initramfs is located at: {:#018X?}", unsafe {
+                    initramfs.base.as_ptr().unwrap()
+                        ..initramfs
+                            .base
+                            .as_ptr()
+                            .unwrap()
+                            .add(initramfs.length as usize)
+                });
+            }
+        }
     }
 
     usr::shell::init_shell();

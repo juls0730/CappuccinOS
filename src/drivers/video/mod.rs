@@ -59,36 +59,30 @@ pub fn put_char(
             byte[bit] = [bg, fg][((character_byte >> (7 - bit)) & 0b00000001) as usize]
         }
 
-        let row = start_y as usize + row_idx;
-
-        // Calculate the row offset in bytes
-        let row_offset = (row as usize * framebuffer.pitch) as isize;
-
-        // Calculate the column offset in bytes
-        let col_offset = (start_x as usize * framebuffer.bpp / 8) as isize;
-
-        // Calculate the final offset for the entire row
-        let row_start_offset = row_offset + col_offset;
+        let row_start_offset = (start_y as usize + row_idx) * framebuffer.pitch
+            + (start_x as usize * framebuffer.bpp / 8);
 
         unsafe {
+            let src_ptr = byte.as_ptr() as *const u128;
+
             core::ptr::copy_nonoverlapping(
-                byte.as_ptr(),
-                framebuffer.pointer.offset(row_start_offset) as *mut u32,
-                8,
+                src_ptr,
+                framebuffer.pointer.add(row_start_offset) as *mut u128,
+                2,
             );
 
-            if mirror_buffer.is_some() {
+            if let Some(mirror_framebuffer) = mirror_buffer {
                 core::ptr::copy_nonoverlapping(
-                    byte.as_ptr(),
-                    mirror_buffer.unwrap().pointer.offset(row_start_offset) as *mut u32,
-                    8,
+                    src_ptr,
+                    mirror_framebuffer.pointer.add(row_start_offset) as *mut u128,
+                    2,
                 );
             }
         };
     }
 }
 
-// pub static GLYPH_CACHE: Mutex<Option<Vec<Option<[[u32; 8]; 16]>>>> = Mutex::new(None);
+// pub static GLYPH_CACHE: Mutex<Option<alloc::vec::Vec<Option<[[u32; 8]; 16]>>>> = Mutex::new(None);
 
 // pub fn put_char(
 //     character: char,
@@ -96,21 +90,18 @@ pub fn put_char(
 //     cy: u16,
 //     fg: u32,
 //     bg: u32,
-//     mut framebuffer: Option<Framebuffer>,
+//     mirror_buffer: Option<Framebuffer>,
 // ) {
 //     let font = font::G_8X16_FONT;
 //     let character_array = font[character as usize];
 
-//     if framebuffer.is_none() {
-//         framebuffer = get_framebuffer();
-//     }
-
-//     let framebuffer = framebuffer.expect("Tried to use framebuffer, but framebuffer was not found");
+//     let framebuffer =
+//         get_framebuffer().expect("Tried to use framebuffer, but framebuffer was not found");
 
 //     let glyph_index = character as u8 as usize;
 
 //     if GLYPH_CACHE.lock().read().is_none() {
-//         *GLYPH_CACHE.lock().write() = Some(vec![None; u8::MAX as usize]);
+//         *GLYPH_CACHE.lock().write() = Some(alloc::vec![None; u8::MAX as usize]);
 //     }
 
 //     // Lock once and reuse the lock result
@@ -137,18 +128,28 @@ pub fn put_char(
 
 //     let character_buf = glyph_cache[glyph_index].unwrap();
 
-//     for (row_index, row) in character_buf.iter().enumerate() {
+//     for row_index in 0..character_buf.len() {
 //         let row_num = start_y as usize + row_index;
-//         let row_offset = (row_num as usize * framebuffer.pitch) as isize;
-//         let col_offset = (start_x as usize * framebuffer.bpp / 8) as isize;
+//         let row_offset = (row_num as usize * framebuffer.pitch) as usize;
+//         let col_offset = (start_x as usize * framebuffer.bpp / 8) as usize;
 //         let row_start_offset = row_offset + col_offset;
 
 //         unsafe {
+//             let src_ptr = character_buf[row_index].as_ptr() as *const u128;
+
 //             core::ptr::copy_nonoverlapping(
-//                 row.as_ptr(),
-//                 framebuffer.pointer.offset(row_start_offset as isize) as *mut u32,
-//                 8,
-//             )
+//                 src_ptr,
+//                 framebuffer.pointer.add(row_start_offset) as *mut u128,
+//                 2,
+//             );
+
+//             if let Some(mirror_framebuffer) = mirror_buffer {
+//                 core::ptr::copy_nonoverlapping(
+//                     src_ptr,
+//                     mirror_framebuffer.pointer.add(row_start_offset) as *mut u128,
+//                     2,
+//                 );
+//             }
 //         };
 //     }
 // }

@@ -111,7 +111,14 @@ pub fn init_shell() {
     prompt();
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    crate::drivers::keyboard::consume_scancode();
+    let kbd_result = crate::drivers::keyboard::init();
+
+    if kbd_result.is_err() {
+        crate::log_error!("Unable to initialize keyboard! {:?}", kbd_result);
+    }
+
+    // #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    // crate::drivers::keyboard::consume_scancode();
 }
 
 pub fn handle_key(mut key: Key) {

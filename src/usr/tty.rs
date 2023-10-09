@@ -92,6 +92,15 @@ impl Console {
         let rows = framebuffer.height / 16;
         self.columns.swap(columns as u16, Ordering::SeqCst);
         self.rows.swap(rows as u16, Ordering::SeqCst);
+
+        if self.feature_bits.lock().read().extract_bit(0) {
+            crate::log_ok!(
+                "Initialized console with framebuffer {}x{}x{}",
+                framebuffer.width,
+                framebuffer.height,
+                framebuffer.bpp
+            )
+        }
     }
 
     fn get_features(&self) -> ConsoleFeatures {
@@ -233,11 +242,15 @@ impl Console {
 
         let skip = lines_to_skip * row_size;
 
-        if self.second_buffer.lock().read().is_some() {
+        if self.get_features().doubled_buffered {
             let second_buffer = self.second_buffer.lock().read().unwrap().pointer as *mut u32;
 
             unsafe {
-                core::ptr::copy(second_buffer.add(skip), second_buffer, screen_size - skip);
+                core::ptr::copy_nonoverlapping(
+                    second_buffer.add(skip),
+                    second_buffer,
+                    screen_size - skip,
+                );
 
                 crate::libs::util::memset32(
                     second_buffer.add(screen_size - skip) as *mut u32,
@@ -249,7 +262,11 @@ impl Console {
             }
         } else {
             unsafe {
-                core::ptr::copy(framebuffer.add(skip), framebuffer, screen_size - skip);
+                core::ptr::copy_nonoverlapping(
+                    framebuffer.add(skip),
+                    framebuffer,
+                    screen_size - skip,
+                );
 
                 crate::libs::util::memset32(
                     framebuffer.add(screen_size - skip) as *mut u32,
@@ -643,7 +660,18 @@ pub fn exec(command: &str) {
     }
 
     if command == "test" {
-        println!("test");
+        let message = "Hello from syscall!\n";
+        unsafe {
+            core::arch::asm!(
+                "mov rdi, 0x01", // write syscall
+                "mov rsi, 0x01", // stdio (but it doesnt matter)
+                "mov rdx, {0:r}", // pointer
+                "mov rcx, {1:r}", // count
+                "int 0x80",
+                in(reg) message.as_ptr(),
+                in(reg) message.len()
+            );
+        }
 
         return;
     }

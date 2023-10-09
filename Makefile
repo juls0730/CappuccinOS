@@ -4,7 +4,7 @@ ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
 IMAGE_PATH = ${ARTIFACTS_PATH}/${IMAGE_NAME}
 CARGO_OPTS = --target=src/arch/${ARCH}/${ARCH}-unknown-none.json
-QEMU_OPTS = -drive format=raw,file=${IMAGE_PATH}
+QEMU_OPTS = -m 512M -drive format=raw,file=${IMAGE_PATH}
 
 ifeq (${MODE},)
 	MODE := release
@@ -35,7 +35,11 @@ check:
 		cargo check
 
 prepare-bin-files:
+		# Remove ISO and everything in the bin directory
+		rm -f ${IMAGE_PATH}
 		rm -rf ${ARTIFACTS_PATH}/*
+
+		# Make bin/ bin/iso_root and bin/initramfs
 		mkdir -p ${ARTIFACTS_PATH}
 		mkdir -p ${ISO_PATH}
 		mkdir -p ${INITRAMFS_PATH}
@@ -63,17 +67,21 @@ copy-iso-files:
 		basename -s .rs src/bin/*.rs | xargs -I {} \
 			cp target/${ARCH}-unknown-none/${MODE}/{}.elf ${ISO_PATH}/bin/{}
 
-		touch ${ISO_PATH}/boot/AAAAAAAAɍ.123
-		touch ${ISO_PATH}/boot/test.tar.gz
-
 		touch ${ISO_PATH}/example.txt
 		echo "Hello World from the hard drive" > ${ISO_PATH}/example.txt
 
 build-iso: copy-iso-files
-		rm -f ${IMAGE_PATH}
+		# Make empty ISO of 64M in size
 		dd if=/dev/zero of=${IMAGE_PATH} bs=1M count=0 seek=64
-		sgdisk ${IMAGE_PATH} -n 1:2048 -t 1:ef00
+
+		# Make ISO a GPT disk with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
+		# Then a second partition spanning the rest of the disk
+		sgdisk ${IMAGE_PATH} -n 1:2048:+32768 -t 1:ef00 -n 2:34816
+
+		# Install the Limine bootloader on the ISO
 		./limine/limine bios-install ${IMAGE_PATH}
+
+		# Make a FAT32 FS and copy files in /bin/iso_root into the ISO starting at 1M or exactly 2048 sectors
 		mformat -F -i ${IMAGE_PATH}@@1M
 		mmd -i ${IMAGE_PATH}@@1M ::/EFI ::/EFI/BOOT
 		mcopy -i ${IMAGE_PATH}@@1M -s ${ISO_PATH}/* ::/

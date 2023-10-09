@@ -121,9 +121,13 @@ pub extern "C" fn generic_handler() {
 }
 
 pub fn set_exceptions() {
-    idt_set_gate(0x00, div_error as u64, 0x28, 0xEE);
-    idt_set_gate(0x06, invalid_opcode as u64, 0x28, 0xEE);
-    idt_set_gate(0x08, double_fault as u64, 0x28, 0xEE);
-    idt_set_gate(0x0D, general_protection_fault as u64, 0x28, 0xEE);
-    idt_set_gate(0x0E, page_fault as u64, 0x28, 0xEE);
+    for i in 0..32 {
+        idt_set_gate(i, generic_handler as u64);
+    }
+
+    idt_set_gate(0x00, div_error as u64);
+    idt_set_gate(0x06, invalid_opcode as u64);
+    idt_set_gate(0x08, double_fault as u64);
+    idt_set_gate(0x0D, general_protection_fault as u64);
+    idt_set_gate(0x0E, page_fault as u64);
 }

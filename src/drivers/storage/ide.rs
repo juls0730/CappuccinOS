@@ -1,11 +1,11 @@
 use core::mem::size_of;
 
-use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec};
 
 use crate::{
     arch::io::{inb, insw, inw, outb},
     drivers::{
-        fs::fat::{self, BIOSParameterBlock, ExtendedBIOSParameterBlock, FSInfo},
+        fs::fat,
         storage::drive::{GPTBlock, GPTPartitionEntry},
     },
     libs::mutex::Mutex,
@@ -410,6 +410,23 @@ impl ATABus {
 
         return Ok(arc_data);
     }
+
+    fn software_reset(&self) {
+        // Procedure is (1) set the SRST bit, (2) wait 5us, (3) clear the SRST bit.
+        outb(
+            self.io_bar + ATADriveControlRegister::ControlAndAltStatus as u16,
+            0x04,
+        );
+        // We wait 5us by reading the status port 50 times (each read takes 100ns)
+        for _ in 0..10 {
+            self.status(); // reads status port 5 times.
+        }
+
+        outb(
+            self.io_bar + ATADriveControlRegister::ControlAndAltStatus as u16,
+            0x00,
+        );
+    }
 }
 
 #[derive(Debug)]
@@ -448,6 +465,8 @@ impl BlockDevice for ATADrive {
         if (sector + sector_count as u64) > self.sector_count() as u64 {
             return Err(());
         }
+
+        self.bus.software_reset();
 
         return self.bus.read(self.drive_type, sector, sector_count);
     }
@@ -577,7 +596,16 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         for &partition in partitions.iter() {
             let fat_fs = fat::FATFS::new(drive, partition);
 
-            fat_fs.test();
+            if fat_fs.is_err() {
+                continue;
+            }
+
+            let file_data = fat_fs
+                .unwrap()
+                .read("/boot/limine/limine.cfg")
+                .expect("Failed to read file");
+
+            crate::println!("{:?}", file_data);
         }
 
         crate::println!("{:?}", partitions);

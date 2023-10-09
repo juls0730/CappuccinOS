@@ -57,7 +57,7 @@
 //     }
 
 //     fn write(&self, sector: u64, data: &[u8]) -> Result<(), ()> {
-//         return self.write(sector, data);
+//         return self.inner.write(sector, data);
 //     }
 // }
 

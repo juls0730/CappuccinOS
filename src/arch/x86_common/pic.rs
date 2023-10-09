@@ -83,7 +83,7 @@ impl ChainedPics {
         io_wait();
 
         // Byte 2: Configure chaining
-        outb(self.pics[0].data as u16, 4); // Tell Maste Pic that there is a slave Pic at IRQ2
+        outb(self.pics[0].data as u16, 4); // Tell Master Pic that there is a slave Pic at IRQ2
         io_wait();
         outb(self.pics[1].data as u16, 2); // Tell Slave PIC it's cascade identity
         io_wait();
