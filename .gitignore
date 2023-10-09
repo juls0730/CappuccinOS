@@ -1,2 +1,5 @@
 /target
 /bin
+
+# Bochs
+bx_enh_dbg.ini

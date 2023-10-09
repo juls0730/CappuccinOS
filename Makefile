@@ -1,6 +1,10 @@
+ARTIFACTS_PATH = bin
 IMAGE_NAME = CappuccinOS.iso
+ISO_PATH = ${ARTIFACTS_PATH}/iso_root
+INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
+IMAGE_PATH = ${ARTIFACTS_PATH}/${IMAGE_NAME}
 CARGO_OPTS = --target=src/arch/${ARCH}/${ARCH}-unknown-none.json
-QEMU_OPTS = -drive format=raw,file=bin/${IMAGE_NAME}
+QEMU_OPTS = -m 512M -drive format=raw,file=${IMAGE_PATH}
 
 ifeq (${MODE},)
 	MODE := release
@@ -12,51 +16,75 @@ else
 	QEMU_OPTS += -s -S
 endif
 
+ifneq (${UEFI},)
+  RUN_OPTS := ovmf
+	QEMU_OPTS += -bios bin/ovmf/OVMF.fd
+endif
+
 ifeq (${ARCH},) 
 	ARCH := x86_64
 endif
 
-.PHONY: all clean run build line-count
+.PHONY: all check prepare-bin-files copy-initramfs-files compile-initramfs copy-iso-files build-iso compile-bootloader compile-binaries ovmf clean run build line-count
 
 all: build
 
-build: prepare-bin-files compile-bootloader compile-binaries build-iso
+build: prepare-bin-files compile-bootloader compile-binaries compile-initramfs build-iso
 
 check: 
 		cargo check
 
 prepare-bin-files:
-		rm -rf bin/iso_root
-		mkdir -p bin
-		mkdir -p bin/iso_root
+		# Remove ISO and everything in the bin directory
+		rm -f ${IMAGE_PATH}
+		rm -rf ${ARTIFACTS_PATH}/*
+
+		# Make bin/ bin/iso_root and bin/initramfs
+		mkdir -p ${ARTIFACTS_PATH}
+		mkdir -p ${ISO_PATH}
+		mkdir -p ${INITRAMFS_PATH}
+
+copy-initramfs-files:
+		# Stub for now ;)
+
+compile-initramfs: copy-initramfs-files
+		python scripts/initramfs.py ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.gz
 
 copy-iso-files:
 		# Limine files
-		mkdir -p bin/iso_root/boot/limine
-		mkdir -p bin/iso_root/boot/EFI/BOOT
+		mkdir -p ${ISO_PATH}/boot/limine
+		mkdir -p ${ISO_PATH}/EFI/BOOT
 
-		cp -v limine.cfg limine/limine-bios.sys bin/iso_root/boot/limine
-		cp -v limine/BOOTX64.EFI bin/iso_root/boot/EFI/BOOT/
-		cp -v limine/BOOTIA32.EFI bin/iso_root/boot/EFI/BOOT/
+		cp -v limine.cfg limine/limine-bios.sys ${ISO_PATH}/boot/limine
+		cp -v limine/BOOTX64.EFI ${ISO_PATH}/EFI/BOOT/
 
 		# OS files
-		cp -v target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf bin/iso_root/boot
+		cp -v target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf ${ISO_PATH}/boot
+		cp -v ${ARTIFACTS_PATH}/initramfs.gz ${ISO_PATH}/boot
 
 		# Application files
-		mkdir -p bin/iso_root/bin
+		mkdir -p ${ISO_PATH}/bin
 		basename -s .rs src/bin/*.rs | xargs -I {} \
-			cp target/${ARCH}-unknown-none/${MODE}/{}.elf bin/iso_root/bin/{}
+			cp target/${ARCH}-unknown-none/${MODE}/{}.elf ${ISO_PATH}/bin/{}
 
-		touch bin/iso_root/example.txt
-		echo "Hello World" > bin/iso_root/example.txt
+		touch ${ISO_PATH}/example.txt
+		echo "Hello World from the hard drive" > ${ISO_PATH}/example.txt
 
 build-iso: copy-iso-files
-		dd if=/dev/zero of=bin/${IMAGE_NAME} bs=1M count=64
-		sgdisk bin/${IMAGE_NAME} -n 1:2048 -t 1:ef00
-		./limine/limine bios-install bin/${IMAGE_NAME}
-		mformat -i bin/${IMAGE_NAME}@@1M
-		mmd -i bin/${IMAGE_NAME}@@1M ::/EFI ::/EFI/BOOT
-		mcopy -i bin/${IMAGE_NAME}@@1M -s bin/iso_root/* ::/
+		# Make empty ISO of 64M in size
+		dd if=/dev/zero of=${IMAGE_PATH} bs=1M count=0 seek=64
+
+		# Make ISO a GPT disk with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
+		# Then a second partition spanning the rest of the disk
+		sgdisk ${IMAGE_PATH} -n 1:2048:+32768 -t 1:ef00 -n 2:34816
+
+		# Install the Limine bootloader on the ISO
+		./limine/limine bios-install ${IMAGE_PATH}
+
+		# Make a FAT32 FS and copy files in /bin/iso_root into the ISO starting at 1M or exactly 2048 sectors
+		mformat -F -i ${IMAGE_PATH}@@1M
+		mmd -i ${IMAGE_PATH}@@1M ::/EFI ::/EFI/BOOT
+		mcopy -i ${IMAGE_PATH}@@1M -s ${ISO_PATH}/* ::/
 
 compile-bootloader:
 		make -C limine
@@ -64,15 +92,18 @@ compile-bootloader:
 compile-binaries:
 		cargo build ${CARGO_OPTS}
 
+ovmf:
+	mkdir -p bin/ovmf
+	cd bin/ovmf && curl -Lo OVMF.fd https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd
+
 # In debug mode, open a terminal and run this command:
 # gdb target/x86_64-unknown-none/debug/CappuccinOS.elf -ex "target remote :1234"
 
-run: build
+run: ${RUN_OPTS} build
 		qemu-system-x86_64 ${QEMU_OPTS}
 
 line-count:
-		git ls-files src | xargs wc -l
-
+		cloc --quiet --exclude-dir=bin --csv src/ | tail -n 1 | awk -F, '{print $$5}'
 clean:
 		cargo clean
 		rm -rf bin

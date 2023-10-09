@@ -1,8 +1,9 @@
 use super::idt_set_gate;
+use crate::libs::util::hcf;
 use crate::{log_error, log_info};
 
 #[no_mangle]
-pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) {
+pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) -> ! {
     match int {
         0x00 => {
             log_error!("DIVISION ERROR!");
@@ -19,6 +20,9 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) {
         0x0E => {
             log_error!("PAGE FAULT!");
         }
+        0x0F => {
+            log_error!("IDE");
+        }
         0xFF => {
             log_error!("EXCEPTION!");
         }
@@ -34,11 +38,7 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) {
         eflags
     );
 
-    loop {
-        unsafe {
-            core::arch::asm!("hlt");
-        }
-    }
+    hcf();
 }
 
 #[naked]
@@ -121,9 +121,13 @@ pub extern "C" fn generic_handler() {
 }
 
 pub fn set_exceptions() {
-    idt_set_gate(0x00, div_error as u64, 0x28, 0xEE);
-    idt_set_gate(0x06, invalid_opcode as u64, 0x28, 0xEE);
-    idt_set_gate(0x08, double_fault as u64, 0x28, 0xEE);
-    idt_set_gate(0x0D, general_protection_fault as u64, 0x28, 0xEE);
-    idt_set_gate(0x0E, page_fault as u64, 0x28, 0xEE);
+    for i in 0..32 {
+        idt_set_gate(i, generic_handler as u64);
+    }
+
+    idt_set_gate(0x00, div_error as u64);
+    idt_set_gate(0x06, invalid_opcode as u64);
+    idt_set_gate(0x08, double_fault as u64);
+    idt_set_gate(0x0D, general_protection_fault as u64);
+    idt_set_gate(0x0E, page_fault as u64);
 }

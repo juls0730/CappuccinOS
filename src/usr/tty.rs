@@ -6,16 +6,9 @@ use alloc::{
     string::String,
     vec::Vec,
 };
+use limine::{MemmapEntry, NonNullPtr};
 
 use crate::libs::{bit_manipulator::BitManipulator, mutex::Mutex};
-
-#[derive(Clone, Copy)]
-struct Framebuffer {
-    width: usize,
-    height: usize,
-    pitch: usize,
-    bpp: usize,
-}
 
 pub struct Cursor {
     cx: AtomicU16,
@@ -27,15 +20,16 @@ pub struct Cursor {
 pub struct Console {
     columns: AtomicU16,
     rows: AtomicU16,
-    cursor: Cursor,
-    framebuffer_attributes: Mutex<Option<Framebuffer>>,
-    framebuffer: Mutex<Option<crate::sys::mem::Region>>,
+    pub cursor: Cursor,
     feature_bits: Mutex<BitManipulator<u8>>,
+    second_buffer: Mutex<Option<crate::drivers::video::Framebuffer>>,
 }
 
 struct ConsoleFeatures {
     _reserved: [u8; 6],
+    serial_output: bool,
     graphical_output: bool,
+    doubled_buffered: bool,
 }
 
 impl Console {
@@ -45,63 +39,80 @@ impl Console {
             columns: AtomicU16::new(0),
             rows: AtomicU16::new(0),
             cursor: Cursor::new(),
-            framebuffer_attributes: Mutex::new(None),
-            framebuffer: Mutex::new(None),
-            feature_bits: Mutex::new(BitManipulator::<u8>::new()),
+            feature_bits: Mutex::new(BitManipulator::<u8>::new_from(0b00000010)),
+            second_buffer: Mutex::new(None),
         }
     }
 
-    pub fn reinit(&self, _back_buffer: Option<crate::sys::mem::Region>) {
-        let framebuffer_response = crate::drivers::video::FRAMEBUFFER_REQUEST
-            .get_response()
-            .get();
+    pub fn reinit(&self, back_buffer_region: Option<&NonNullPtr<MemmapEntry>>) {
+        let framebuffer = crate::drivers::video::get_framebuffer();
 
-        if framebuffer_response.is_none() {
+        // Enable serial if it initialized correctly
+        if crate::drivers::serial::POISONED.load(Ordering::SeqCst) == false {
+            self.feature_bits.lock().write().set_bit(1);
+        }
+
+        // Enable graphical output
+        if framebuffer.is_some() {
+            self.feature_bits.lock().write().set_bit(0);
+        } else {
             return;
         }
 
-        // eww, variable redeclaration
-        let framebuffer_response = framebuffer_response.unwrap();
+        if back_buffer_region.is_some() {
+            self.feature_bits.lock().write().set_bit(2);
+            let mut back_buffer = crate::drivers::video::get_framebuffer().unwrap();
 
-        if framebuffer_response.framebuffer_count < 1 {
-            return;
+            back_buffer.pointer = back_buffer_region.unwrap().base as *mut u8;
+
+            let row_size = back_buffer.pitch / (back_buffer.bpp / 8);
+
+            let screen_size = row_size * back_buffer.height;
+
+            unsafe {
+                crate::arch::set_mtrr(
+                    back_buffer_region.unwrap().base as u64,
+                    screen_size as u64,
+                    crate::arch::MTRRMode::WriteCombining,
+                );
+
+                core::ptr::write_bytes::<u32>(
+                    back_buffer.pointer as *mut u32,
+                    0x000000,
+                    screen_size,
+                );
+            }
+
+            (*self.second_buffer.lock().write()) = Some(back_buffer);
         }
 
-        let framebuffer = &framebuffer_response.framebuffers()[0];
+        let framebuffer = framebuffer.unwrap();
 
         let columns = framebuffer.width / 8;
         let rows = framebuffer.height / 16;
         self.columns.swap(columns as u16, Ordering::SeqCst);
         self.rows.swap(rows as u16, Ordering::SeqCst);
 
-        let framebuffer_size = (framebuffer.height * framebuffer.pitch) as usize;
-        let framebuffer_region = crate::sys::mem::Region {
-            usable: true,
-            base: framebuffer.address.as_ptr().unwrap() as usize,
-            len: framebuffer_size,
-        };
-
-        let attributes = Framebuffer {
-            width: framebuffer.width as usize,
-            height: framebuffer.height as usize,
-            pitch: framebuffer.pitch as usize,
-            bpp: framebuffer.bpp as usize,
-        };
-
-        (*self.framebuffer.lock().write()) = Some(framebuffer_region);
-
-        (*self.framebuffer_attributes.lock().write()) = Some(attributes);
-
-        // Enable graphical output
-        (*self.feature_bits.lock().write()) |= 0b0000_0001;
+        if self.feature_bits.lock().read().extract_bit(0) {
+            crate::log_ok!(
+                "Initialized console with framebuffer {}x{}x{}",
+                framebuffer.width,
+                framebuffer.height,
+                framebuffer.bpp
+            )
+        }
     }
 
     fn get_features(&self) -> ConsoleFeatures {
         let graphical_output = ((*self.feature_bits.lock().read()).get() & 0x01) != 0;
+        let serial_output = ((*self.feature_bits.lock().read()).get() & 0x02) != 0;
+        let doubled_buffered = ((*self.feature_bits.lock().read()).get() & 0x04) != 0;
 
         return ConsoleFeatures {
             _reserved: [0; 6],
+            serial_output,
             graphical_output,
+            doubled_buffered,
         };
     }
 
@@ -123,6 +134,10 @@ impl Console {
 
                     for code in codes {
                         match code {
+                            0 => {
+                                self.cursor.set_fg(0xbababa);
+                                self.cursor.set_bg(0x000000);
+                            }
                             30..=37 => self.cursor.set_fg(color_to_hex(code - 30)),
                             40..=47 => self.cursor.set_bg(color_to_hex(code - 40)),
                             90..=97 => self.cursor.set_fg(color_to_hex(code - 30)),
@@ -153,11 +168,16 @@ impl Console {
                 continue;
             }
 
-            crate::drivers::serial::write_serial(character);
+            if CONSOLE.get_features().serial_output {
+                if character == '\n' {
+                    crate::drivers::serial::write_serial('\r');
+                }
+                crate::drivers::serial::write_serial(character);
+            }
 
             if !CONSOLE.get_features().graphical_output {
-                // No graphical output, so to avoid errors, return after sending serial
-                return;
+                // No graphical output, so to avoid errors, continue after sending serial
+                continue;
             }
 
             if character == '\u{0008}' {
@@ -170,7 +190,7 @@ impl Console {
                     self.cursor.cy.load(Ordering::SeqCst),
                     self.cursor.fg.load(Ordering::SeqCst),
                     self.cursor.bg.load(Ordering::SeqCst),
-                    Some(self.get_framebuffer()),
+                    *self.second_buffer.lock().read(),
                 );
                 continue;
             }
@@ -198,7 +218,7 @@ impl Console {
                     self.cursor.cy.load(Ordering::SeqCst),
                     self.cursor.fg.load(Ordering::SeqCst),
                     self.cursor.bg.load(Ordering::SeqCst),
-                    Some(self.get_framebuffer()),
+                    *self.second_buffer.lock().read(),
                 );
 
                 self.cursor.move_right();
@@ -209,31 +229,51 @@ impl Console {
     }
 
     pub fn scroll_console(&self) {
-        let framebuffer_attributes = (*self.framebuffer_attributes.lock().read()).unwrap();
+        let framebuffer_attributes = crate::drivers::video::get_framebuffer()
+            .expect("Tried to scroll console but we have no framebuffer.");
 
-        let size = (framebuffer_attributes.pitch * framebuffer_attributes.height)
-            / (framebuffer_attributes.bpp / 8);
+        let lines_to_skip = 16;
 
-        let framebuffer = (*self.framebuffer.lock().read()).unwrap().base as *mut u32;
+        let framebuffer = framebuffer_attributes.pointer as *mut u32;
 
-        // size / height = bytes per row of pixels, multiplied by 16 since font height is 16 pixels.
-        let copy_from = ((size as f64 / framebuffer_attributes.height as f64) * 16.0) as usize;
+        let row_size = framebuffer_attributes.pitch / (framebuffer_attributes.bpp / 8);
 
-        // Copy the framebuffer minus the top row to the framebuffer,
-        // Then clear the last row with the background color to avoid noise on bare metal
-        // See issue #1
-        unsafe {
-            core::ptr::copy(
-                framebuffer.add(copy_from),
-                framebuffer,
-                size as usize - copy_from,
-            );
+        let screen_size = row_size * framebuffer_attributes.height;
 
-            crate::libs::util::memset32(
-                framebuffer.add(size as usize - copy_from) as *mut u32,
-                self.cursor.bg.load(Ordering::SeqCst),
-                copy_from,
-            );
+        let skip = lines_to_skip * row_size;
+
+        if self.get_features().doubled_buffered {
+            let second_buffer = self.second_buffer.lock().read().unwrap().pointer as *mut u32;
+
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    second_buffer.add(skip),
+                    second_buffer,
+                    screen_size - skip,
+                );
+
+                crate::libs::util::memset32(
+                    second_buffer.add(screen_size - skip) as *mut u32,
+                    0x000000,
+                    skip,
+                );
+
+                core::ptr::copy_nonoverlapping(second_buffer, framebuffer, screen_size);
+            }
+        } else {
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    framebuffer.add(skip),
+                    framebuffer,
+                    screen_size - skip,
+                );
+
+                crate::libs::util::memset32(
+                    framebuffer.add(screen_size - skip) as *mut u32,
+                    0x000000,
+                    skip,
+                );
+            }
         }
     }
 
@@ -242,13 +282,8 @@ impl Console {
 
         crate::drivers::video::fill_screen(
             self.cursor.bg.load(Ordering::SeqCst),
-            Some(self.get_framebuffer()),
+            *self.second_buffer.lock().read(),
         );
-    }
-
-    fn get_framebuffer(&self) -> *mut u8 {
-        let frambuffer_guard = self.framebuffer.lock().read();
-        return (*frambuffer_guard).unwrap().base as *mut u8;
     }
 }
 
@@ -265,7 +300,7 @@ impl Cursor {
         };
     }
 
-    fn set_pos(&self, new_cx: u16, new_cy: u16) {
+    pub fn set_pos(&self, new_cx: u16, new_cy: u16) {
         self.cx.swap(new_cx, Ordering::SeqCst);
         self.cy.swap(new_cy, Ordering::SeqCst);
     }
@@ -359,15 +394,15 @@ fn color_to_hex(color: u8) -> u32 {
 
 #[macro_export]
 macro_rules! println {
-    () => (crate::print!("\r\n"));
-    ($($arg:tt)*) => (crate::print!("{}\r\n", &alloc::format!($($arg)*)));
+    () => (crate::print!("\n"));
+    ($($arg:tt)*) => (crate::print!("{}\n", &alloc::format!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => (
-			crate::usr::tty::CONSOLE.puts(&alloc::format!($($arg)*));
-		)
+        crate::usr::tty::CONSOLE.puts(&alloc::format!($($arg)*))
+    )
 }
 
 pub struct InputBuffer {
@@ -421,7 +456,7 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
             CONSOLE.cursor.move_left();
             return;
         } else {
-            CONSOLE.cursor.move_left();
+            CONSOLE.cursor.move_right();
             return;
         }
     }
@@ -625,7 +660,18 @@ pub fn exec(command: &str) {
     }
 
     if command == "test" {
-        println!("test");
+        let message = "Hello from syscall!\n";
+        unsafe {
+            core::arch::asm!(
+                "mov rdi, 0x01", // write syscall
+                "mov rsi, 0x01", // stdio (but it doesnt matter)
+                "mov rdx, {0:r}", // pointer
+                "mov rcx, {1:r}", // count
+                "int 0x80",
+                in(reg) message.as_ptr(),
+                in(reg) message.len()
+            );
+        }
 
         return;
     }

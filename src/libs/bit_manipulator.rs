@@ -3,7 +3,6 @@ use core::{
     ops::{BitAnd, BitOr, BitOrAssign, BitXorAssign, Not, Shl, Shr},
 };
 
-#[derive(Clone, Copy, Debug)]
 pub struct BitManipulator<T> {
     value: T,
     _phantom: PhantomData<T>,
@@ -60,6 +59,13 @@ impl BitManipulator<u8> {
     pub const fn new() -> Self {
         Self {
             value: 0,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub const fn new_from(value: u8) -> Self {
+        Self {
+            value,
             _phantom: PhantomData,
         }
     }

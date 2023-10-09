@@ -3,7 +3,7 @@
 // And I can read and learn about the PIC too ig
 // Driver for the 8086 PIC, we might switch to the APIC later on.
 
-use super::io::{inb, outb};
+use super::io::{inb, io_wait, outb};
 
 // Command used to begin PIC initialization.
 const CMD_INIT: u8 = 0x11;
@@ -35,11 +35,6 @@ impl Pic {
     // for more
     fn end_of_interrupt(&mut self) {
         return outb(self.command as u16, CMD_END_OF_INTERRUPT);
-    }
-
-    // Reads the interrupt mask of this PIC.
-    fn read_mask(&mut self) -> u8 {
-        return inb(self.data as u16);
     }
 
     // Write the interrupt mask of this PIC
@@ -75,40 +70,29 @@ impl ChainedPics {
 
     // Initialize the chained pic controllers.
     pub fn initialize(&mut self) {
-        // We need to delay writes to our PICs incase we are on a slower
-        // machine. writing to port 0x80 should take care of this.
-        let wait_port: u8 = 0x80;
-        let wait = || outb(wait_port as u16, 0);
-
         // Tell each PIC we're going to initialize it.
         outb(self.pics[0].command as u16, CMD_INIT);
-        wait();
+        io_wait();
         outb(self.pics[1].command as u16, CMD_INIT);
-        wait();
+        io_wait();
 
         // Byte 1: Set up our base offsets.
         outb(self.pics[0].data as u16, self.pics[0].offset);
-        wait();
+        io_wait();
         outb(self.pics[1].data as u16, self.pics[1].offset);
-        wait();
+        io_wait();
 
         // Byte 2: Configure chaining
-        outb(self.pics[0].data as u16, 4); // Tell Maste Pic that there is a slave Pic at IRQ2
-        wait();
+        outb(self.pics[0].data as u16, 4); // Tell Master Pic that there is a slave Pic at IRQ2
+        io_wait();
         outb(self.pics[1].data as u16, 2); // Tell Slave PIC it's cascade identity
-        wait();
+        io_wait();
 
         // Byte 3: Set out mode.
         outb(self.pics[0].data as u16, MODE_8086);
-        wait();
+        io_wait();
         outb(self.pics[1].data as u16, MODE_8086);
-        wait();
-
-        crate::log_ok!("PICs initialized");
-    }
-
-    pub fn read_masks(&mut self) -> [u8; 2] {
-        [self.pics[0].read_mask(), self.pics[1].read_mask()]
+        io_wait();
     }
 
     pub fn write_masks(&mut self, mask1: u8, mask2: u8) {
@@ -116,6 +100,8 @@ impl ChainedPics {
         self.pics[1].write_mask(mask2);
     }
 
+    // Keep for later if we want to use APIC later in the future
+    #[allow(dead_code)]
     pub fn disable(&mut self) {
         self.write_masks(0xFF, 0xFF);
     }

@@ -72,7 +72,8 @@ impl ModStatusBits {
     }
 
     fn set_modifier_key(&self, key: &str, status: bool) {
-        let mut led_status = *self.led_status.lock().write();
+        let mut led_status_lock = self.led_status.lock();
+        let led_status = led_status_lock.write();
         let mut mod_status = self.get_status();
 
         match key {
@@ -81,15 +82,15 @@ impl ModStatusBits {
             "alt" => mod_status.alt = status,
             "shift" => mod_status.shift = status,
             "caps" => {
-                led_status ^= 0b00000100;
+                *led_status ^= 0b00000100;
                 mod_status.caps = status
             }
             "num_lock" => {
-                led_status ^= 0b00000010;
+                *led_status ^= 0b00000010;
                 mod_status.num_lock = status
             }
             "scr_lock" => {
-                led_status ^= 0b00000100;
+                *led_status ^= 0b00000100;
                 mod_status.scr_lock = status
             }
             _ => return,
@@ -110,7 +111,14 @@ pub fn init_shell() {
     prompt();
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    crate::drivers::keyboard::consume_scancode();
+    let kbd_result = crate::drivers::keyboard::init();
+
+    if kbd_result.is_err() {
+        crate::log_error!("Unable to initialize keyboard! {:?}", kbd_result);
+    }
+
+    // #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    // crate::drivers::keyboard::consume_scancode();
 }
 
 pub fn handle_key(mut key: Key) {
@@ -136,7 +144,7 @@ fn parse_key(mut key: Key) -> Key {
         panic!("Key passed into parse_key is not a character key!");
     }
 
-    if mod_status.num_lock && key.name.starts_with("Keypad") {
+    if !mod_status.num_lock && key.name.starts_with("Keypad") {
         key = parse_keypad_keys(key);
         return key;
     }

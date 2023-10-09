@@ -1,3 +1,4 @@
+use crate::arch::interrupts::{idt_set_gate, InterruptIndex};
 // Shitty keyboard driver
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::arch::{
@@ -5,6 +6,9 @@ use crate::arch::{
     io::{inb, outb},
 };
 use core::sync::atomic::{AtomicBool, Ordering};
+
+const KBD_DATA_PORT: u16 = 0x60;
+const KBD_COMMAND_AND_STATUS_PORT: u16 = 0x64;
 
 pub struct Key<'a> {
     pub pressed: bool,
@@ -21,7 +25,7 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler() {
         .write()
         .notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
 
-    let scancode = inb(0x60);
+    let scancode = inb(KBD_DATA_PORT);
 
     let key = parse_key(scancode);
 
@@ -30,18 +34,69 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler() {
     }
 }
 
+#[derive(Debug)]
+pub enum KBDError {
+    TimeoutError,
+    ParityError,
+    TestFailed,
+}
+
+pub fn init() -> Result<(), KBDError> {
+    // flush output buffer
+    while (inb(KBD_COMMAND_AND_STATUS_PORT) & 1) != 0 {
+        inb(KBD_DATA_PORT);
+    }
+
+    // Disable PS/2 Devices (second then first)
+    outb(KBD_COMMAND_AND_STATUS_PORT, 0xA7);
+    outb(KBD_COMMAND_AND_STATUS_PORT, 0xAD);
+
+    outb(KBD_COMMAND_AND_STATUS_PORT, 0xFF);
+    let status = inb(KBD_COMMAND_AND_STATUS_PORT);
+
+    if status & (1 << 6) != 0 {
+        return Err(KBDError::TimeoutError);
+    }
+
+    if status & (1 << 7) != 0 {
+        return Err(KBDError::ParityError);
+    }
+
+    // Test the controller
+    outb(KBD_COMMAND_AND_STATUS_PORT, 0xAA);
+    let result = inb(KBD_DATA_PORT);
+
+    if result != 0x55 {
+        return Err(KBDError::TestFailed);
+    }
+
+    idt_set_gate(
+        InterruptIndex::Keyboard.as_u8(),
+        crate::drivers::keyboard::keyboard_interrupt_handler as u64,
+    );
+
+    // Enable PS/2 Devices (second then first)
+    outb(KBD_COMMAND_AND_STATUS_PORT, 0xA8);
+    outb(KBD_COMMAND_AND_STATUS_PORT, 0xAE);
+
+    // Reset Devices
+    inb(KBD_COMMAND_AND_STATUS_PORT);
+
+    return Ok(());
+}
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn consume_scancode() {
-    let _ = inb(0x60);
+    let _ = inb(KBD_DATA_PORT);
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn set_leds(led_byte: u8) {
     // Command bytes
-    outb(0x60, 0xED);
-    while !(inb(0x60) == 0xfa) {}
+    outb(KBD_DATA_PORT, 0xED);
+    while !(inb(KBD_DATA_PORT) == 0xfa) {}
     // Data byte
-    outb(0x60, led_byte);
+    outb(KBD_DATA_PORT, led_byte);
 }
 
 fn parse_key(mut scancode: u8) -> Option<Key<'static>> {
