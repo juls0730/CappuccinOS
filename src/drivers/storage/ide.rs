@@ -1,11 +1,11 @@
-use core::mem::size_of;
+use core::{marker::PhantomData, mem::size_of};
 
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
 use crate::{
     arch::io::{inb, insw, inw, outb},
     drivers::{
-        fs::fat,
+        fs::{fat, vfs::VFSFileSystem},
         storage::drive::{GPTBlock, GPTPartitionEntry},
     },
     libs::mutex::Mutex,
@@ -193,7 +193,7 @@ struct ATABus {
     control_bar: u16,
 }
 
-impl ATABus {
+impl<'a> ATABus {
     fn new(io_bar: u16, control_bar: u16) -> Arc<Self> {
         let io_bar = io_bar & 0xFFFC;
         let control_bar = control_bar & 0xFFFC;
@@ -482,6 +482,8 @@ impl BlockDevice for ATADrive {
     }
 }
 
+static DRIVES: Mutex<Vec<ATADrive>> = Mutex::new(Vec::new());
+
 // TODO: This code is pretty much just the C from @Moldytzu's mOS
 // This code could probably be made better and more device agnostic
 // But that's TODO obviously
@@ -490,8 +492,6 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
     let control_port_base = bar1 as u16;
 
     let bus = ATABus::new(io_port_base, control_port_base);
-
-    let mut drives = Vec::new();
 
     for i in 0..2 {
         let drive_type = if i == 0 {
@@ -503,25 +503,20 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         let drive = ATADrive::new(bus.clone(), drive_type);
 
         if drive.is_ok() {
-            drives.push(drive);
+            DRIVES.lock().write().push(drive.unwrap());
         }
     }
 
     crate::log_info!(
         "ATA: Detected {} drive{}",
-        drives.len(),
-        match drives.len() {
+        DRIVES.lock().read().len(),
+        match DRIVES.lock().read().len() {
             1 => "",
             _ => "s",
         }
     );
 
-    for drive in drives.iter() {
-        if drive.is_err() {
-            continue;
-        }
-
-        let drive = drive.as_ref().unwrap();
+    for drive in DRIVES.lock().read().iter() {
         let sectors = drive.sector_count();
 
         crate::log_info!(
@@ -600,12 +595,14 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
                 continue;
             }
 
-            let file_data = fat_fs
-                .unwrap()
-                .read("/boot/limine/limine.cfg")
-                .expect("Failed to read file");
+            let fat_fs = fat_fs.unwrap();
 
-            crate::println!("{:?}", file_data);
+            let vfs = crate::drivers::fs::vfs::VFS::new(Box::new(fat_fs));
+
+            crate::drivers::fs::vfs::VFS_INSTANCES
+                .lock()
+                .write()
+                .push(vfs);
         }
 
         crate::println!("{:?}", partitions);

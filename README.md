@@ -47,7 +47,7 @@ Before building CappuccinOS, make sure you have the following installed on your 
 - binutils
 - sgdisk
 - mtools
-- python
+- squashfs-tools
 - qemu (optional)
 
 Clone the repo:
@@ -66,7 +66,7 @@ Install the dependencies:
     <summary>Arch</summary>
     
     ```BASH
-    sudo pacman -S binutils gptfdisk mtools python
+    sudo pacman -S binutils gptfdisk mtools squashfs-tools
     # Optionally
     sudo pacman -S qemu-system-x86
     ```
@@ -74,11 +74,9 @@ Install the dependencies:
 
 <details>
     <summary>Ubuntu</summary>
-    These might not be perfect because I don't use Ubuntu, but they should be correct.
-
+    
     ```BASH
-    # Assuming Python is installed by default
-    sudo apt install binutils gdisk mtools
+    sudo apt install binutils gdisk mtools squashfs-tools
     # Optionally
     sudo apt install qemu
     ```

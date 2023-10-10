@@ -46,9 +46,11 @@ prepare-bin-files:
 
 copy-initramfs-files:
 		# Stub for now ;)
+		touch ${INITRAMFS_PATH}/example.txt
+		echo "Hello World from Initramfs" > ${INITRAMFS_PATH}/example.txt
 
 compile-initramfs: copy-initramfs-files
-		python scripts/initramfs.py ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.gz
+		mksquashfs ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.img
 
 copy-iso-files:
 		# Limine files
@@ -60,7 +62,7 @@ copy-iso-files:
 
 		# OS files
 		cp -v target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf ${ISO_PATH}/boot
-		cp -v ${ARTIFACTS_PATH}/initramfs.gz ${ISO_PATH}/boot
+		cp -v ${ARTIFACTS_PATH}/initramfs.img ${ISO_PATH}/boot
 
 		# Application files
 		mkdir -p ${ISO_PATH}/bin
@@ -76,7 +78,7 @@ build-iso: copy-iso-files
 
 		# Make ISO a GPT disk with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
 		# Then a second partition spanning the rest of the disk
-		sgdisk ${IMAGE_PATH} -n 1:2048:+32768 -t 1:ef00 -n 2:34816
+		sgdisk ${IMAGE_PATH} -n 1:2048:+32768 -t 1:ef00 -n 2
 
 		# Install the Limine bootloader on the ISO
 		./limine/limine bios-install ${IMAGE_PATH}

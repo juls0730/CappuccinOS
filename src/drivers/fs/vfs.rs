@@ -1,74 +1,42 @@
-// use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
-// use crate::drivers::storage::drive::BlockDevice;
+use crate::libs::mutex::Mutex;
 
-// // Define a custom error enum for file-related errors
-// enum VfsError {
-//     NotFound,
-//     FileExists,
-// }
+pub trait VFSFileSystem {
+    fn open(&self, path: &str) -> Result<Box<dyn VFSFile + '_>, ()>;
+    fn read_dir(&self, path: &str) -> Result<Box<dyn VFSDirectory>, ()>;
+}
 
-// trait VfsDevice {
-//     fn mount(&self, mount_point: &str) -> Result<(), ()>;
+pub trait VFSFile {
+    fn read(&self) -> Result<Arc<[u8]>, ()>;
+}
 
-//     fn open(&self, path: &str) -> Result<Box<dyn VfsFile>, VfsError>;
+pub trait VFSDirectory {
+    fn list_files(&self) -> Result<Arc<[Box<dyn VFSFile>]>, ()>;
+}
 
-//     fn create(&self, path: &str) -> Result<Box<dyn VfsFile>, VfsError>;
+pub static VFS_INSTANCES: Mutex<Vec<VFS>> = Mutex::new(Vec::new());
 
-//     fn remove(&self, path: &str) -> Result<(), VfsError>;
+pub struct VFS {
+    file_system: Box<dyn VFSFileSystem>,
+}
 
-//     fn list_directory(&self, path: &str) -> Result<Vec<String>, VfsError>;
-// }
+impl VFS {
+    pub fn new(file_system: Box<dyn VFSFileSystem>) -> Self {
+        return Self { file_system };
+    }
 
-// trait VfsFileSystem {
-//     // Mount the file system at the specified mount point
-//     fn mount(&mut self, mount_point: &str) -> Result<(), VfsError>;
+    pub fn open(&self, path: &str) -> Result<Box<dyn VFSFile + '_>, ()> {
+        return self.file_system.open(path);
+    }
 
-//     // Open a file by its path and return a file handle
-//     fn open_file(&self, path: &str) -> Result<Box<dyn VfsFile>, VfsError>;
+    pub fn read_dir(&self, path: &str) -> Result<Box<dyn VFSDirectory>, ()> {
+        return self.file_system.read_dir(path);
+    }
+    // Add more VFS methods as needed
+}
 
-//     // Create a new file at the specified path
-//     fn create_file(&self, path: &str) -> Result<Box<dyn VfsFile>, VfsError>;
-
-//     // Remove a file or directory at the specified path
-//     fn remove(&self, path: &str) -> Result<(), VfsError>;
-
-//     // List the contents of a directory
-//     fn list_directory(&self, path: &str) -> Result<Vec<String>, VfsError>;
-// }
-
-// struct VfsBlockDevice {
-//     inner: Box<dyn BlockDevice>,
-// }
-
-// impl VfsBlockDevice {
-//     pub fn new(inner: Box<dyn BlockDevice>) -> Self {
-//         Self { inner }
-//     }
-// }
-
-// impl BlockDevice for VfsBlockDevice {
-//     fn read(&self, sector: u64, sector_count: usize) -> Result<alloc::sync::Arc<[u8]>, ()> {
-//         return self.inner.read(sector, sector_count);
-//     }
-
-//     fn sector_count(&self) -> u64 {
-//         return self.inner.sector_count();
-//     }
-
-//     fn write(&self, sector: u64, data: &[u8]) -> Result<(), ()> {
-//         return self.inner.write(sector, data);
-//     }
-// }
-
-// // Implement the VfsDevice trait for VfsBlockDevice with the required VFS-specific methods
-// impl VfsDevice for VfsBlockDevice {
-//     fn mount(&self, mount_point: &str) -> Result<(), VfsError> {
-//         // Implement the mounting logic here
-//         // You can use the inner BlockDevice for low-level access
-//         // and provide VFS-specific functionality
-//         // ...
-//     }
-
-//     // ... implement other VfsDevice methods ...
-// }
+pub fn init() {
+    // Deduce which storage medium(s) we're using
+    crate::drivers::storage::ide::init();
+}

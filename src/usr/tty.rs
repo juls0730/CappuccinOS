@@ -8,7 +8,7 @@ use alloc::{
 };
 use limine::{MemmapEntry, NonNullPtr};
 
-use crate::libs::{bit_manipulator::BitManipulator, mutex::Mutex};
+use crate::libs::mutex::Mutex;
 
 pub struct Cursor {
     cx: AtomicU16,
@@ -21,7 +21,7 @@ pub struct Console {
     columns: AtomicU16,
     rows: AtomicU16,
     pub cursor: Cursor,
-    feature_bits: Mutex<BitManipulator<u8>>,
+    feature_bits: Mutex<u8>,
     second_buffer: Mutex<Option<crate::drivers::video::Framebuffer>>,
 }
 
@@ -39,7 +39,7 @@ impl Console {
             columns: AtomicU16::new(0),
             rows: AtomicU16::new(0),
             cursor: Cursor::new(),
-            feature_bits: Mutex::new(BitManipulator::<u8>::new_from(0b00000010)),
+            feature_bits: Mutex::new(0b00000000),
             second_buffer: Mutex::new(None),
         }
     }
@@ -49,18 +49,18 @@ impl Console {
 
         // Enable serial if it initialized correctly
         if crate::drivers::serial::POISONED.load(Ordering::SeqCst) == false {
-            self.feature_bits.lock().write().set_bit(1);
+            *self.feature_bits.lock().write() |= 1 << 1;
         }
 
         // Enable graphical output
         if framebuffer.is_some() {
-            self.feature_bits.lock().write().set_bit(0);
+            *self.feature_bits.lock().write() |= 1;
         } else {
             return;
         }
 
         if back_buffer_region.is_some() {
-            self.feature_bits.lock().write().set_bit(2);
+            *self.feature_bits.lock().write() |= 1 << 2;
             let mut back_buffer = crate::drivers::video::get_framebuffer().unwrap();
 
             back_buffer.pointer = back_buffer_region.unwrap().base as *mut u8;
@@ -93,7 +93,7 @@ impl Console {
         self.columns.swap(columns as u16, Ordering::SeqCst);
         self.rows.swap(rows as u16, Ordering::SeqCst);
 
-        if self.feature_bits.lock().read().extract_bit(0) {
+        if self.feature_bits.lock().read() & 1 != 0 {
             crate::log_ok!(
                 "Initialized console with framebuffer {}x{}x{}",
                 framebuffer.width,
@@ -104,9 +104,9 @@ impl Console {
     }
 
     fn get_features(&self) -> ConsoleFeatures {
-        let graphical_output = ((*self.feature_bits.lock().read()).get() & 0x01) != 0;
-        let serial_output = ((*self.feature_bits.lock().read()).get() & 0x02) != 0;
-        let doubled_buffered = ((*self.feature_bits.lock().read()).get() & 0x04) != 0;
+        let graphical_output = ((*self.feature_bits.lock().read()) & 0x01) != 0;
+        let serial_output = ((*self.feature_bits.lock().read()) & 0x02) != 0;
+        let doubled_buffered = ((*self.feature_bits.lock().read()) & 0x04) != 0;
 
         return ConsoleFeatures {
             _reserved: [0; 6],
@@ -656,6 +656,22 @@ pub fn exec(command: &str) {
 
     if command == "clear" {
         CONSOLE.clear_screen();
+        return;
+    }
+
+    if command == "read" {
+        if args.len() < 1 {
+            println!("read: usage error: at least one argument is required!");
+        }
+
+        let file = crate::drivers::fs::vfs::VFS_INSTANCES.lock().read()[0].open(&args[0]);
+
+        if file.is_err() {
+            println!("read: Unable to read file!");
+        }
+
+        println!("{:?}", file.unwrap().read());
+
         return;
     }
 

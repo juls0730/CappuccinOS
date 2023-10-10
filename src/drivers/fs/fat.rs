@@ -10,6 +10,8 @@ use alloc::{
 
 use crate::drivers::storage::drive::{BlockDevice, GPTPartitionEntry};
 
+use super::vfs::{VFSDirectory, VFSFile, VFSFileSystem};
+
 // The first Cluster (perhaps 0xF0FFFF0F) is the FAT ID
 // The second cluster stores the end-of-cluster-chain marker
 // The third entry and further holds the directory table
@@ -154,6 +156,7 @@ pub struct FATFS<'a> {
     bpb: BIOSParameterBlock,
     fat_start: u64,
     fat_type: FatType,
+    cluster_size: usize,
 }
 
 impl<'a> FATFS<'a> {
@@ -226,6 +229,8 @@ impl<'a> FATFS<'a> {
             FatType::Fat32
         };
 
+        let cluster_size = bpb.sectors_per_cluster as usize * 512;
+
         return Ok(Self {
             drive: Box::new(drive),
             partition,
@@ -234,76 +239,8 @@ impl<'a> FATFS<'a> {
             bpb,
             fat_start,
             fat_type,
+            cluster_size,
         });
-    }
-
-    fn read_file(&self, file_entry: FileEntry) -> Arc<[u8]> {
-        let mut file: Vec<u8> = Vec::with_capacity(file_entry.file_size as usize);
-        let mut file_ptr_index = 0;
-
-        let mut cluster = ((file_entry.high_first_cluster_number as u32) << 16)
-            | file_entry.low_first_cluster_number as u32;
-
-        let mut copied_bytes = 0;
-        let cluster_size = self.bpb.sectors_per_cluster as usize * 512;
-
-        loop {
-            let cluster_data = self
-                .drive
-                .read(
-                    self.partition.start_sector + self.cluster_to_sector(cluster as usize) as u64,
-                    self.bpb.sectors_per_cluster as usize,
-                )
-                .expect("Failed to read file cluster");
-
-            let remaining = file_entry.file_size as usize - copied_bytes;
-            let to_copy = if remaining > cluster_size {
-                cluster_size
-            } else {
-                remaining
-            };
-
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    cluster_data.as_ptr(),
-                    file.as_mut_ptr().add(file_ptr_index),
-                    to_copy,
-                );
-
-                file.set_len(file.len() + to_copy);
-            }
-
-            file_ptr_index += cluster_size;
-
-            copied_bytes += to_copy;
-
-            cluster = self.get_next_cluster(cluster as usize);
-
-            if cluster >= EOC {
-                break;
-            }
-        }
-
-        return Arc::from(file);
-    }
-
-    pub fn read(&self, path: &str) -> Result<Arc<[u8]>, ()> {
-        let path_componenets: Vec<&str> = path.trim_start_matches('/').split('/').collect();
-        let mut current_cluster = self.bpb.root_dir_cluster as usize;
-
-        for path in path_componenets {
-            let dir_entry: FileEntry = self.find_entry_in_directory(current_cluster, path)?;
-
-            if dir_entry.attributes == FileEntryAttributes::Directory as u8 {
-                current_cluster = (((dir_entry.high_first_cluster_number as u32) << 16)
-                    | dir_entry.low_first_cluster_number as u32)
-                    as usize;
-            } else {
-                return Ok(self.read_file(dir_entry));
-            }
-        }
-
-        return Err(());
     }
 
     fn find_entry_in_directory(&self, cluster: usize, name: &str) -> Result<FileEntry, ()> {
@@ -312,10 +249,7 @@ impl<'a> FATFS<'a> {
         let mut long_filename: Vec<LongFileName> = Vec::new();
         let mut long_filename_string: Option<String> = None;
 
-        let data_sector = self.drive.read(
-            self.partition.start_sector + self.cluster_to_sector(cluster) as u64,
-            self.bpb.sectors_per_cluster as usize,
-        )?;
+        let data_sector = self.read_cluster(cluster)?;
 
         loop {
             let bytes: [u8; core::mem::size_of::<FileEntry>()] =
@@ -415,6 +349,13 @@ impl<'a> FATFS<'a> {
         return Err(());
     }
 
+    pub fn read_cluster(&self, cluster: usize) -> Result<Arc<[u8]>, ()> {
+        return self.drive.read(
+            self.partition.start_sector + self.cluster_to_sector(cluster) as u64,
+            self.bpb.sectors_per_cluster as usize,
+        );
+    }
+
     fn cluster_to_sector(&self, cluster: usize) -> usize {
         let fat_size = self.bpb.sectors_per_fat_ext;
         let root_dir_sectors = ((self.bpb.root_directory_count * 32)
@@ -431,5 +372,95 @@ impl<'a> FATFS<'a> {
 
     fn get_next_cluster(&self, cluster: usize) -> u32 {
         return self.fat[cluster] & 0x0FFFFFFF;
+    }
+}
+
+impl<'a> VFSFileSystem for FATFS<'a> {
+    fn open(&self, path: &str) -> Result<Box<dyn VFSFile + '_>, ()> {
+        let path_componenets: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+        let mut current_cluster = self.bpb.root_dir_cluster as usize;
+
+        for path in path_componenets {
+            let file_entry: FileEntry = self.find_entry_in_directory(current_cluster, path)?;
+
+            if file_entry.attributes == FileEntryAttributes::Directory as u8 {
+                current_cluster = (((file_entry.high_first_cluster_number as u32) << 16)
+                    | file_entry.low_first_cluster_number as u32)
+                    as usize;
+            } else {
+                return Ok(Box::new(FatFile {
+                    fat_fs: &self,
+                    file_entry,
+                }));
+            }
+        }
+
+        return Err(());
+    }
+
+    fn read_dir(&self, path: &str) -> Result<Box<dyn VFSDirectory>, ()> {
+        unimplemented!();
+    }
+}
+
+struct FatFile<'a> {
+    fat_fs: &'a FATFS<'a>,
+    file_entry: FileEntry,
+}
+
+impl<'a> VFSFile for FatFile<'a> {
+    fn read(&self) -> Result<Arc<[u8]>, ()> {
+        let mut file: Vec<u8> = Vec::with_capacity(self.file_entry.file_size as usize);
+        let mut file_ptr_index = 0;
+
+        let mut cluster = ((self.file_entry.high_first_cluster_number as u32) << 16)
+            | self.file_entry.low_first_cluster_number as u32;
+        let cluster_size = self.fat_fs.cluster_size;
+
+        let mut copied_bytes = 0;
+
+        loop {
+            let cluster_data = self.fat_fs.read_cluster(cluster as usize)?;
+
+            let remaining = self.file_entry.file_size as usize - copied_bytes;
+            let to_copy = if remaining > cluster_size {
+                cluster_size
+            } else {
+                remaining
+            };
+
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    cluster_data.as_ptr(),
+                    file.as_mut_ptr().add(file_ptr_index),
+                    to_copy,
+                );
+
+                file.set_len(file.len() + to_copy);
+            }
+
+            file_ptr_index += cluster_size;
+
+            copied_bytes += to_copy;
+
+            cluster = self.fat_fs.get_next_cluster(cluster as usize);
+
+            if cluster >= EOC {
+                break;
+            }
+        }
+
+        return Ok(Arc::from(file));
+    }
+}
+
+struct FatDirectory<'a> {
+    fat_fs: &'a FATFS<'a>,
+    directory_cluster: usize,
+}
+
+impl<'a> VFSDirectory for FatDirectory<'a> {
+    fn list_files(&self) -> Result<Arc<[Box<dyn VFSFile>]>, ()> {
+        unimplemented!();
     }
 }

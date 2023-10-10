@@ -30,10 +30,10 @@ pub extern "C" fn _start() -> ! {
 
     drivers::pci::enumerate_pci_bus();
 
-    drivers::storage::ide::init();
+    drivers::fs::vfs::init();
 
     if let Some(module_response) = MODULE_REQUEST.get_response().get() {
-        let module_name = "initramfs.gz";
+        let module_name = "initramfs.img";
 
         for module in module_response.modules() {
             let c_path = module.path.to_str();

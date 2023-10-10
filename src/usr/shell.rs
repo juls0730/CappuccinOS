@@ -1,9 +1,6 @@
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::drivers::keyboard::set_leds;
-use crate::{
-    drivers::keyboard::Key,
-    libs::{bit_manipulator::BitManipulator, mutex::Mutex},
-};
+use crate::{drivers::keyboard::Key, libs::mutex::Mutex};
 
 struct ModStatus {
     pub win: bool,      // first bit
@@ -44,16 +41,16 @@ impl ModStatus {
 }
 
 struct ModStatusBits {
-    status: Mutex<BitManipulator<u8>>,
-    led_status: Mutex<BitManipulator<u8>>,
+    status: Mutex<u8>,
+    led_status: Mutex<u8>,
 }
 
 impl ModStatusBits {
     #[inline]
     const fn new() -> Self {
         return Self {
-            status: Mutex::new(BitManipulator::<u8>::new()),
-            led_status: Mutex::new(BitManipulator::<u8>::new()),
+            status: Mutex::new(0u8),
+            led_status: Mutex::new(0u8),
         };
     }
 
@@ -61,13 +58,13 @@ impl ModStatusBits {
         let status = self.status.lock().read();
 
         return ModStatus {
-            win: status.extract_bit(0),
-            ctrl: status.extract_bit(1),
-            alt: status.extract_bit(2),
-            shift: status.extract_bit(3),
-            caps: status.extract_bit(4),
-            num_lock: status.extract_bit(5),
-            scr_lock: status.extract_bit(6),
+            win: ((status >> 0) & 1) != 0,
+            ctrl: ((status >> 1) & 1) != 0,
+            alt: ((status >> 2) & 1) != 0,
+            shift: ((status >> 3) & 1) != 0,
+            caps: ((status >> 4) & 1) != 0,
+            num_lock: ((status >> 5) & 1) != 0,
+            scr_lock: ((status >> 6) & 1) != 0,
         };
     }
 
@@ -98,10 +95,10 @@ impl ModStatusBits {
 
         // set Keyboard led (caps, num lock, scroll lock)
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        set_leds(led_status.get());
+        set_leds(*led_status);
 
         let new_value = mod_status.to_byte();
-        self.status.lock().write().set(new_value);
+        *self.status.lock().write() = new_value;
     }
 }
 
