@@ -538,6 +538,13 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         let mut array = [0u8; 512];
         array.copy_from_slice(&gpt_sector[..512]);
 
+        let mut signature = [0u8; 8];
+        signature.copy_from_slice(&gpt_sector[0..8]);
+
+        if &signature != b"EFI PART" {
+            panic!("MBR Disk is unsupported!")
+        }
+
         let gpt = GPTBlock::new(&array);
 
         let mut partitions: Vec<GPTPartitionEntry> =

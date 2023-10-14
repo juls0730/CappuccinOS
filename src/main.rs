@@ -41,18 +41,20 @@ pub extern "C" fn _start() -> ! {
                 continue;
             }
 
-            if c_path.unwrap().to_str().unwrap().contains(module_name) {
-                let initramfs = module;
-
-                crate::println!("Initramfs is located at: {:#018X?}", unsafe {
-                    initramfs.base.as_ptr().unwrap()
-                        ..initramfs
-                            .base
-                            .as_ptr()
-                            .unwrap()
-                            .add(initramfs.length as usize)
-                });
+            if !c_path.unwrap().to_str().unwrap().contains(module_name) {
+                continue;
             }
+
+            let initramfs = module;
+
+            crate::println!("Initramfs is located at: {:#018X?}", unsafe {
+                initramfs.base.as_ptr().unwrap()
+                    ..initramfs
+                        .base
+                        .as_ptr()
+                        .unwrap()
+                        .add(initramfs.length as usize)
+            });
         }
     }
 
@@ -63,7 +65,7 @@ pub extern "C" fn _start() -> ! {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    log_error!("{}", info);
+    crate::log_error!("{}", info);
 
     hcf();
 }

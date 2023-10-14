@@ -5,6 +5,7 @@ INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
 IMAGE_PATH = ${ARTIFACTS_PATH}/${IMAGE_NAME}
 CARGO_OPTS = --target=src/arch/${ARCH}/${ARCH}-unknown-none.json
 QEMU_OPTS = -m 512M -drive format=raw,file=${IMAGE_PATH}
+ISO_PARTITION_TYPE = MBR
 
 ifeq (${MODE},)
 	MODE := release
@@ -72,14 +73,23 @@ copy-iso-files:
 		touch ${ISO_PATH}/example.txt
 		echo "Hello World from the hard drive" > ${ISO_PATH}/example.txt
 
-build-iso: copy-iso-files
+partition-iso: copy-iso-files
 		# Make empty ISO of 64M in size
 		dd if=/dev/zero of=${IMAGE_PATH} bs=1M count=0 seek=64
-
+ifeq (${ISO_PARTITION_TYPE},GPT)
 		# Make ISO a GPT disk with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
 		# Then a second partition spanning the rest of the disk
 		sgdisk ${IMAGE_PATH} -n 1:2048:+32768 -t 1:ef00 -n 2
+else
+		# Make ISO a MBR disk with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
+		# Then a second partition spanning the rest of the disk
+		parted -a none ${IMAGE_PATH} mklabel msdos
+		parted -a none ${IMAGE_PATH} mkpart primary 2048s 34815s
+		parted -a none ${IMAGE_PATH} mkpart primary 34816s 100%
+		parted -a none ${IMAGE_PATH} set 1 boot on
+endif
 
+build-iso: partition-iso
 		# Install the Limine bootloader on the ISO
 		./limine/limine bios-install ${IMAGE_PATH}
 

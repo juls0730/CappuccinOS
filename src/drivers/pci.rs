@@ -1,4 +1,4 @@
-use alloc::{format, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::{
     arch::io::{inl, outl},
@@ -142,7 +142,7 @@ pub fn enumerate_pci_bus() {
 
     crate::println!("====== PCI DEVICES ======");
     for (i, pci_device) in PCI_DEVICES.lock().read().iter().enumerate() {
-        crate::println!("Entry {:2}: {}", i, pci_device)
+        crate::println!("Entry {i:2}: {pci_device}")
     }
 }
 

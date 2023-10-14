@@ -123,7 +123,7 @@ fn find_facp(root_sdt: *const u32, revision: u8) -> Option<&'static ACPISDTHeade
         let signature_bytes = unsafe { (*h).signature };
         let signature_str = core::str::from_utf8(&signature_bytes).unwrap_or("");
 
-        crate::println!("{} {:?} {:?}", signature_str, signature_bytes, b"FACP");
+        crate::println!("{signature_str} {signature_bytes:?} {:?}", b"FACP");
 
         // if signature_str == "FACP" {
         //     let facp_header = unsafe { &*(h as *const _) };

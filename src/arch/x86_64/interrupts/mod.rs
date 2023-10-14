@@ -140,7 +140,7 @@ pub extern "C" fn syscall_handler(rdi: u64, rsi: u64, rdx: u64, rcx: u64) {
 
     let slice = unsafe { core::slice::from_raw_parts(buf, count) };
     let message = core::str::from_utf8(slice).unwrap();
-    crate::print!("{}", message);
+    crate::print!("{message}");
 }
 
 pub fn init() {

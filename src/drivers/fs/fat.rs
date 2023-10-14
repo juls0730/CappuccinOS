@@ -1,7 +1,4 @@
-use core::alloc::Layout;
-
 use alloc::{
-    alloc::alloc,
     boxed::Box,
     string::{String, ToString},
     sync::Arc,

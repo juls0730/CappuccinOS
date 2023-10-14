@@ -535,7 +535,7 @@ pub fn exec(command: &str) {
 
             let mem = unsafe { alloc(layout) as *mut u16 };
             unsafe { *(mem as *mut u16) = 42 };
-            println!("{:p} val: {}", mem, unsafe { *(mem) });
+            println!("{mem:p} val: {}", unsafe { *(mem) });
         } else {
             // deallocate
             if args.len() < 3 {
@@ -594,7 +594,7 @@ pub fn exec(command: &str) {
             unsafe {
                 let val = *ptr;
 
-                println!("Value at memory address: {}", val);
+                println!("Value at memory address: {val}");
             }
         } else {
             println!("Argument provided is not a memory address.");
@@ -612,7 +612,7 @@ pub fn exec(command: &str) {
             let ptr = alloc(layout);
             dealloc(ptr, layout);
         }
-        println!("Filled allocator with {} bytes", free_mem);
+        println!("Filled allocator with {free_mem} bytes");
 
         return;
     }
@@ -662,15 +662,17 @@ pub fn exec(command: &str) {
     if command == "read" {
         if args.len() < 1 {
             println!("read: usage error: at least one argument is required!");
+            return;
         }
 
         let file = crate::drivers::fs::vfs::VFS_INSTANCES.lock().read()[0].open(&args[0]);
 
         if file.is_err() {
             println!("read: Unable to read file!");
+            return;
         }
 
-        println!("{:?}", file.unwrap().read());
+        println!("{:X?}", file.unwrap().read());
 
         return;
     }

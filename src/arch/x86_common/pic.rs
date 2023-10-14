@@ -3,7 +3,7 @@
 // And I can read and learn about the PIC too ig
 // Driver for the 8086 PIC, we might switch to the APIC later on.
 
-use super::io::{inb, io_wait, outb};
+use super::io::{io_wait, outb};
 
 // Command used to begin PIC initialization.
 const CMD_INIT: u8 = 0x11;
