@@ -8,11 +8,11 @@ extern crate alloc;
 mod arch;
 mod drivers;
 mod libs;
-mod sys;
+mod mem;
 mod usr;
 
 use drivers::serial;
-use libs::util::hcf;
+use libs::{lazy::Lazy, mutex::Mutex, util::hcf};
 use limine::ModuleRequest;
 
 pub static MODULE_REQUEST: ModuleRequest = ModuleRequest::new(0);
@@ -22,7 +22,7 @@ pub extern "C" fn _start() -> ! {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     arch::interrupts::init();
 
-    sys::mem::init();
+    mem::log_info();
 
     serial::init_serial();
 

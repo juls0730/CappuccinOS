@@ -1,12 +1,14 @@
+pub mod allocator;
+
+use core::alloc::GlobalAlloc;
+
 use limine::{MemmapEntry, MemoryMapEntryType, NonNullPtr};
 
-use super::allocator::BuddyAllocator;
+use crate::libs::lazy::Lazy;
+
+use self::allocator::BuddyAllocator;
 
 static MEMMAP_REQUEST: limine::MemmapRequest = limine::MemmapRequest::new(0);
-
-#[global_allocator]
-pub static ALLOCATOR: BuddyAllocator =
-    BuddyAllocator::new_unchecked(0x1000 as *mut u8, 0x0008_0000);
 
 // fn stitch_memory_map(memmap: &mut [NonNullPtr<MemmapEntry>]) -> &mut [NonNullPtr<MemmapEntry>] {
 //     let mut null_index_ptr = 0;
@@ -63,13 +65,18 @@ pub static ALLOCATOR: BuddyAllocator =
 //     return &mut memmap[0..null_index_ptr];
 // }
 
-fn find_largest_memory_regions(
-    memmap: &[NonNullPtr<MemmapEntry>],
-    min_heap_size: usize,
-) -> (
+pub static LARGEST_MEMORY_REGIONS: Lazy<(
+    &NonNullPtr<MemmapEntry>,
     Option<&NonNullPtr<MemmapEntry>>,
-    Option<&NonNullPtr<MemmapEntry>>,
-) {
+)> = Lazy::new(|| {
+    let memmap_request = MEMMAP_REQUEST.get_response().get_mut();
+    if memmap_request.is_none() {
+        panic!("Memory map was None!");
+    }
+
+    let memmap = memmap_request.unwrap().memmap();
+
+    let min_heap_size = 0x0008_0000;
     let mut largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
     let mut second_largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
     let mut framebuffer_region: Option<&NonNullPtr<MemmapEntry>> = None;
@@ -93,6 +100,12 @@ fn find_largest_memory_regions(
         }
     }
 
+    if largest_region.is_none() {
+        panic!("Suitable memory regions not found!");
+    }
+
+    let largest_region = largest_region.unwrap();
+
     if framebuffer_region.is_none() || second_largest_region.is_none() {
         return (largest_region, None);
     }
@@ -103,63 +116,78 @@ fn find_largest_memory_regions(
         return (largest_region, second_largest_region);
     }
 
-    let shrunk_heap = largest_region.unwrap().len - framebuffer_size;
+    let shrunk_heap = largest_region.len - framebuffer_size;
 
     if shrunk_heap < min_heap_size as u64 {
         return (largest_region, None);
     }
 
     unsafe {
-        (*second_largest_region.unwrap().as_ptr()).base = largest_region.unwrap().base;
+        (*second_largest_region.unwrap().as_ptr()).base = largest_region.base;
 
-        (*largest_region.unwrap().as_ptr()).len = shrunk_heap;
+        (*largest_region.as_ptr()).len = shrunk_heap;
         (*second_largest_region.unwrap().as_ptr()).base += shrunk_heap;
     }
 
     return (largest_region, second_largest_region);
+});
+
+pub struct Allocator {
+    pub inner: Lazy<BuddyAllocator>,
 }
+
+unsafe impl GlobalAlloc for Allocator {
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        self.inner.alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
+        self.inner.dealloc(ptr, layout)
+    }
+}
+
+#[global_allocator]
+pub static ALLOCATOR: Allocator = Allocator {
+    inner: Lazy::new(|| {
+        BuddyAllocator::new_unchecked(
+            LARGEST_MEMORY_REGIONS.0.base as *mut u8,
+            LARGEST_MEMORY_REGIONS.0.len as usize,
+        )
+    }),
+};
 
 #[inline]
 fn memory_section_is_usable(entry: &MemmapEntry) -> bool {
     return entry.typ == MemoryMapEntryType::Usable;
 }
 
-pub fn init() {
+pub fn log_info() {
+    let (largest_region, second_largest_region) = *LARGEST_MEMORY_REGIONS;
+
+    crate::log_info!(
+        "Using largest section with: {} bytes of memory for heap at {:#X}",
+        largest_region.len,
+        largest_region.base
+    );
+
+    if second_largest_region.is_some() {
+        crate::log_info!(
+            "Using second largest section with: {} bytes of memory for framebuffer mirroring at {:#X}",
+            second_largest_region.unwrap().len,
+            second_largest_region.unwrap().base
+        );
+    }
+
+    log_memory_map();
+}
+
+fn log_memory_map() {
     let memmap_request = MEMMAP_REQUEST.get_response().get_mut();
     if memmap_request.is_none() {
         panic!("Memory map was None!");
     }
 
     let memmap = memmap_request.unwrap().memmap();
-
-    // let memmap = stitch_memory_map(memmap.memmap_mut());
-
-    let (largest_region, second_largest_region) = find_largest_memory_regions(&memmap, 0x0008_0000);
-
-    crate::usr::tty::CONSOLE.reinit(second_largest_region);
-
-    if largest_region.is_none() {
-        panic!("Suitable memory regions not found!");
-    }
-
-    ALLOCATOR.set_heap(
-        largest_region.unwrap().base as *mut u8,
-        largest_region.unwrap().len as usize,
-    );
-
-    crate::log_ok!(
-        "Using largest section with: {} bytes of memory for heap at {:#X}",
-        largest_region.unwrap().len,
-        largest_region.unwrap().base
-    );
-
-    if second_largest_region.is_some() {
-        crate::log_ok!(
-            "Using second largest section with: {} bytes of memory for framebuffer mirroring at {:#X}",
-            second_largest_region.unwrap().len,
-            second_largest_region.unwrap().base
-        );
-    }
 
     crate::println!("====== MEMORY MAP ======");
     for entry in memmap.iter() {

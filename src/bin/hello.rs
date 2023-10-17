@@ -1,25 +1,22 @@
 #![no_std]
 #![no_main]
 
-extern crate alloc;
+// use alloc::format;
 
-use alloc::borrow::ToOwned;
-use alloc::format;
+// // piggyback off of the CappuccinOS allocator
+// // TODO: make a syscall for memory operations
+// #[allow(unused_imports)]
+// use CappuccinOS;
 
-// piggyback off of the CappuccinOS allocator
-// TODO: make a syscall for memory operations
-#[allow(unused_imports)]
-use CappuccinOS;
+#[no_mangle]
+pub fn _start(_args: &[&str]) {
+    let message = "Hello, World!\n";
 
-#[allow(dead_code)]
-fn main(args: &[&str]) {
-    let mut message = "Hello, World!\n".to_owned();
+    // if args.len() > 1 {
+    //     message = format!("Hello, {}!\n", args[1]);
+    // }
 
-    if args.len() > 1 {
-        message = format!("Hello, {}!\n", args[1]);
-    }
-
-    print(message.as_str());
+    print(message);
 }
 
 fn print(message: &str) {

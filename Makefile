@@ -1,15 +1,14 @@
-ARTIFACTS_PATH = bin
-IMAGE_NAME = CappuccinOS.iso
+ARTIFACTS_PATH ?= bin
+IMAGE_NAME ?= CappuccinOS.iso
+ISO_PARTITION_TYPE ?= GPT
+MODE ?= release
+ARCH ?= x86_64
+
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
 IMAGE_PATH = ${ARTIFACTS_PATH}/${IMAGE_NAME}
 CARGO_OPTS = --target=src/arch/${ARCH}/${ARCH}-unknown-none.json
 QEMU_OPTS = -m 512M -drive format=raw,file=${IMAGE_PATH}
-ISO_PARTITION_TYPE = MBR
-
-ifeq (${MODE},)
-	MODE := release
-endif
 
 ifeq (${MODE},release)
 	CARGO_OPTS += --release
@@ -18,12 +17,8 @@ else
 endif
 
 ifneq (${UEFI},)
-  RUN_OPTS := ovmf
+	RUN_OPTS := ovmf
 	QEMU_OPTS += -bios bin/ovmf/OVMF.fd
-endif
-
-ifeq (${ARCH},) 
-	ARCH := x86_64
 endif
 
 .PHONY: all check prepare-bin-files copy-initramfs-files compile-initramfs copy-iso-files build-iso compile-bootloader compile-binaries ovmf clean run build line-count
@@ -111,7 +106,7 @@ ovmf:
 # In debug mode, open a terminal and run this command:
 # gdb target/x86_64-unknown-none/debug/CappuccinOS.elf -ex "target remote :1234"
 
-run: ${RUN_OPTS} build
+run: build ${RUN_OPTS}
 		qemu-system-x86_64 ${QEMU_OPTS}
 
 line-count:

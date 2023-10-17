@@ -8,7 +8,7 @@ use alloc::{
 };
 use limine::{MemmapEntry, NonNullPtr};
 
-use crate::libs::mutex::Mutex;
+use crate::libs::{lazy::Lazy, mutex::Mutex};
 
 pub struct Cursor {
     cx: AtomicU16,
@@ -44,6 +44,7 @@ impl Console {
         }
     }
 
+    #[inline]
     pub fn reinit(&self, back_buffer_region: Option<&NonNullPtr<MemmapEntry>>) {
         let framebuffer = crate::drivers::video::get_framebuffer();
 
@@ -92,15 +93,6 @@ impl Console {
         let rows = framebuffer.height / 16;
         self.columns.swap(columns as u16, Ordering::SeqCst);
         self.rows.swap(rows as u16, Ordering::SeqCst);
-
-        if self.feature_bits.lock().read() & 1 != 0 {
-            crate::log_ok!(
-                "Initialized console with framebuffer {}x{}x{}",
-                framebuffer.width,
-                framebuffer.height,
-                framebuffer.bpp
-            )
-        }
     }
 
     fn get_features(&self) -> ConsoleFeatures {
@@ -287,7 +279,14 @@ impl Console {
     }
 }
 
-pub static CONSOLE: Console = Console::new();
+// pub static CONSOLE: Console = Console::new();
+pub static CONSOLE: Lazy<Console> = Lazy::new(|| {
+    let console = Console::new();
+
+    console.reinit(crate::mem::LARGEST_MEMORY_REGIONS.1);
+
+    return console;
+});
 
 impl Cursor {
     #[inline]
@@ -496,11 +495,11 @@ pub fn exec(command: &str) {
     }
 
     if command == "memstat" {
-        let allocator = &crate::sys::mem::ALLOCATOR;
+        let allocator = &crate::mem::ALLOCATOR;
 
-        let (used_mem, used_mem_label) = crate::sys::mem::label_units(allocator.get_used_mem());
-        let (free_mem, free_mem_label) = crate::sys::mem::label_units(allocator.get_free_mem());
-        let (total_mem, total_mem_label) = crate::sys::mem::label_units(allocator.get_total_mem());
+        let (used_mem, used_mem_label) = crate::mem::label_units(allocator.inner.get_used_mem());
+        let (free_mem, free_mem_label) = crate::mem::label_units(allocator.inner.get_free_mem());
+        let (total_mem, total_mem_label) = crate::mem::label_units(allocator.inner.get_total_mem());
 
         println!(
             "Allocated so far: {used_mem} {used_mem_label}\nFree memory: {free_mem} {free_mem_label}\nTotal Memory: {total_mem} {total_mem_label}",
@@ -540,6 +539,7 @@ pub fn exec(command: &str) {
             // deallocate
             if args.len() < 3 {
                 println!("Malformed input. See --help for detailed instructions.");
+                return;
             }
 
             let mut memory_address = 0;
@@ -604,8 +604,8 @@ pub fn exec(command: &str) {
     }
 
     if command == "memfill" {
-        let allocator = &crate::sys::mem::ALLOCATOR;
-        let free_mem = allocator.get_free_mem();
+        let allocator = &crate::mem::ALLOCATOR;
+        let free_mem = allocator.inner.get_free_mem();
 
         unsafe {
             let layout = core::alloc::Layout::from_size_align(free_mem, 16).unwrap();
