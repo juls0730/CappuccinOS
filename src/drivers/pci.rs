@@ -117,8 +117,8 @@ impl PciDevice {
 
 impl core::fmt::Display for PciDevice {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "Bus: {} Device: {} Function: {} VendorID: {:#X} DeviceID: {:#X} ClassCode: {:#04X} SubclassCode: {:#04X} ProgIF: {:#04X}",
-        self.bus, self.device, self.func, self.vendor_id, self.device_id, self.class_code, self.subclass_code, self.prog_if)
+        return write!(f, "Bus: {} Device: {} Function: {} VendorID: {:#X} DeviceID: {:#X} ClassCode: {:#04X} SubclassCode: {:#04X} ProgIF: {:#04X}",
+        self.bus, self.device, self.func, self.vendor_id, self.device_id, self.class_code, self.subclass_code, self.prog_if);
     }
 }
 

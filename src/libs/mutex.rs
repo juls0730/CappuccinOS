@@ -3,6 +3,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+// TODO: Rip the lock out of mutex and make it more generic to be able to use it outside of mutexes
+
 pub struct Mutex<T: ?Sized> {
     locked: AtomicBool,
     data: UnsafeCell<T>,

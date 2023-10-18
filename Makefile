@@ -3,12 +3,14 @@ IMAGE_NAME ?= CappuccinOS.iso
 ISO_PARTITION_TYPE ?= GPT
 MODE ?= release
 ARCH ?= x86_64
+MEMORY ?= 512M
+QEMU_OPTS ?= 
 
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
 IMAGE_PATH = ${ARTIFACTS_PATH}/${IMAGE_NAME}
 CARGO_OPTS = --target=src/arch/${ARCH}/${ARCH}-unknown-none.json
-QEMU_OPTS = -m 512M -drive format=raw,file=${IMAGE_PATH}
+QEMU_OPTS += -m ${MEMORY} -drive format=raw,file=${IMAGE_PATH}
 
 ifeq (${MODE},release)
 	CARGO_OPTS += --release

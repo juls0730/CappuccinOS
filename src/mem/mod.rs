@@ -1,18 +1,39 @@
 pub mod allocator;
+pub mod pmm;
 
 use core::alloc::GlobalAlloc;
 
+use alloc::string::{String, ToString};
 use limine::{MemmapEntry, MemoryMapEntryType, NonNullPtr};
 
-use crate::libs::lazy::Lazy;
+use crate::libs::{lazy::Lazy, mutex::Mutex};
 
-use self::allocator::BuddyAllocator;
+use self::{allocator::BuddyAllocator, pmm::PhysicalMemoryManager};
 
 static MEMMAP_REQUEST: limine::MemmapRequest = limine::MemmapRequest::new(0);
+static HHDM_REQUEST: limine::HhdmRequest = limine::HhdmRequest::new(0);
+
+pub static MEMMAP: Lazy<Mutex<&mut [NonNullPtr<MemmapEntry>]>> = Lazy::new(|| {
+    let memmap_request = MEMMAP_REQUEST
+        .get_response()
+        .get_mut()
+        .expect("Failed to get Memory map!");
+
+    return Mutex::new(memmap_request.memmap_mut());
+});
+
+pub static HHDM_OFFSET: Lazy<usize> = Lazy::new(|| {
+    let hhdm = HHDM_REQUEST
+        .get_response()
+        .get()
+        .expect("Failed to get Higher Half Direct Map!");
+
+    return hhdm.offset as usize;
+});
 
 // fn stitch_memory_map(memmap: &mut [NonNullPtr<MemmapEntry>]) -> &mut [NonNullPtr<MemmapEntry>] {
 //     let mut null_index_ptr = 0;
-
+//
 //     crate::println!("====== MEMORY MAP ======");
 //     for entry in memmap.iter() {
 //         crate::println!(
@@ -22,10 +43,10 @@ static MEMMAP_REQUEST: limine::MemmapRequest = limine::MemmapRequest::new(0);
 //             entry.len as usize
 //         )
 //     }
-
+//
 //     for i in 1..memmap.len() {
 //         let region = &memmap[i];
-
+//
 //         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 //         if region.typ == limine::MemoryMapEntryType::Framebuffer {
 //             crate::arch::set_mtrr(
@@ -34,34 +55,34 @@ static MEMMAP_REQUEST: limine::MemmapRequest = limine::MemmapRequest::new(0);
 //                 crate::arch::MTRRMode::WriteCombining,
 //             );
 //         }
-
+//
 //         if !memory_section_is_usable(&memmap[i]) {
 //             memmap[null_index_ptr].len = memmap[i].len;
 //             memmap[null_index_ptr].base = memmap[i].base;
 //             memmap[null_index_ptr].typ = memmap[i].typ;
-
+//
 //             null_index_ptr += 1;
 //             continue;
 //         }
-
+//
 //         if null_index_ptr > 0 && memory_section_is_usable(&memmap[null_index_ptr - 1]) {
 //             memmap[null_index_ptr - 1].len += memmap[i].len;
-
+//
 //             continue;
 //         }
-
+//
 //         if memory_section_is_usable(&memmap[i - 1]) {
 //             memmap[i - 1].len += memmap[i].len;
-
+//
 //             memmap[null_index_ptr].len = memmap[i - 1].len;
 //             memmap[null_index_ptr].base = memmap[i - 1].base;
 //             memmap[null_index_ptr].typ = memmap[i - 1].typ;
-
+//
 //             null_index_ptr += 1;
 //             continue;
 //         }
 //     }
-
+//
 //     return &mut memmap[0..null_index_ptr];
 // }
 
@@ -69,12 +90,7 @@ pub static LARGEST_MEMORY_REGIONS: Lazy<(
     &NonNullPtr<MemmapEntry>,
     Option<&NonNullPtr<MemmapEntry>>,
 )> = Lazy::new(|| {
-    let memmap_request = MEMMAP_REQUEST.get_response().get_mut();
-    if memmap_request.is_none() {
-        panic!("Memory map was None!");
-    }
-
-    let memmap = memmap_request.unwrap().memmap();
+    let memmap = MEMMAP.lock().read();
 
     let min_heap_size = 0x0008_0000;
     let mut largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
@@ -132,6 +148,9 @@ pub static LARGEST_MEMORY_REGIONS: Lazy<(
     return (largest_region, second_largest_region);
 });
 
+pub static PHYSICAL_MEMORY_MANAGER: Lazy<PhysicalMemoryManager> =
+    Lazy::new(|| PhysicalMemoryManager::new());
+
 pub struct Allocator {
     pub inner: Lazy<BuddyAllocator>,
 }
@@ -181,7 +200,7 @@ pub fn log_info() {
     log_memory_map();
 }
 
-fn log_memory_map() {
+pub fn log_memory_map() {
     let memmap_request = MEMMAP_REQUEST.get_response().get_mut();
     if memmap_request.is_none() {
         panic!("Memory map was None!");
@@ -191,30 +210,63 @@ fn log_memory_map() {
 
     crate::println!("====== MEMORY MAP ======");
     for entry in memmap.iter() {
-        let label = label_units(entry.len as usize);
+        let label = (entry.len as usize).label_bytes();
 
         crate::println!(
-            "[ {:#018X?} ] Type: \033[{};m{:?}\033[0;m Size: {} {}",
+            "[ {:#018X?} ] Type: \033[{};m{:?}\033[0;m Size: {}",
             entry.base..entry.base + entry.len,
             match entry.typ {
                 limine::MemoryMapEntryType::Usable => 32,
                 _ => 31,
             },
             entry.typ,
-            label.0,
-            label.1
+            label
         )
     }
 }
 
-pub fn label_units(bytes: usize) -> (usize, &'static str) {
-    if bytes >> 30 > 0 {
-        return (bytes >> 30, "GiB");
-    } else if bytes >> 20 > 0 {
-        return (bytes >> 20, "MiB");
-    } else if bytes >> 10 > 0 {
-        return (bytes >> 10, "KiB");
-    } else {
-        return (bytes, "Bytes");
+pub struct Label {
+    size: usize,
+    text_label: &'static str,
+}
+
+impl core::fmt::Display for Label {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return write!(f, "{}{}", self.size, self.text_label);
+    }
+}
+
+// Hacky solution to avoid allocation, but keep the names
+static BYTE_LABELS: (&str, &str, &str, &str) = ("GiB", "MiB", "KiB", "Bytes");
+
+pub trait LabelBytes {
+    fn label_bytes(&self) -> Label;
+}
+
+impl LabelBytes for usize {
+    fn label_bytes(&self) -> Label {
+        let bytes = self.clone();
+
+        if bytes >> 30 > 0 {
+            return Label {
+                size: bytes >> 30,
+                text_label: BYTE_LABELS.0,
+            };
+        } else if bytes >> 20 > 0 {
+            return Label {
+                size: bytes >> 20,
+                text_label: BYTE_LABELS.1,
+            };
+        } else if bytes >> 10 > 0 {
+            return Label {
+                size: bytes >> 10,
+                text_label: BYTE_LABELS.2,
+            };
+        } else {
+            return Label {
+                size: bytes,
+                text_label: BYTE_LABELS.3,
+            };
+        }
     }
 }

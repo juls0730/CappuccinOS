@@ -8,7 +8,10 @@ use alloc::{
 };
 use limine::{MemmapEntry, NonNullPtr};
 
-use crate::libs::{lazy::Lazy, mutex::Mutex};
+use crate::{
+    libs::{lazy::Lazy, mutex::Mutex},
+    mem::LabelBytes,
+};
 
 pub struct Cursor {
     cx: AtomicU16,
@@ -497,12 +500,12 @@ pub fn exec(command: &str) {
     if command == "memstat" {
         let allocator = &crate::mem::ALLOCATOR;
 
-        let (used_mem, used_mem_label) = crate::mem::label_units(allocator.inner.get_used_mem());
-        let (free_mem, free_mem_label) = crate::mem::label_units(allocator.inner.get_free_mem());
-        let (total_mem, total_mem_label) = crate::mem::label_units(allocator.inner.get_total_mem());
+        let used_mem = allocator.inner.get_used_mem().label_bytes();
+        let free_mem = allocator.inner.get_free_mem().label_bytes();
+        let total_mem = allocator.inner.get_total_mem().label_bytes();
 
         println!(
-            "Allocated so far: {used_mem} {used_mem_label}\nFree memory: {free_mem} {free_mem_label}\nTotal Memory: {total_mem} {total_mem_label}",
+            "Allocated so far: {used_mem}\nFree memory: {free_mem}\nTotal Memory: {total_mem}",
         );
         return;
     }

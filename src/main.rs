@@ -1,5 +1,6 @@
 #![feature(abi_x86_interrupt)]
 #![feature(naked_functions)]
+#![feature(strict_provenance)]
 #![no_std]
 #![no_main]
 
@@ -12,8 +13,10 @@ mod mem;
 mod usr;
 
 use drivers::serial;
-use libs::{lazy::Lazy, mutex::Mutex, util::hcf};
+use libs::util::hcf;
 use limine::ModuleRequest;
+
+use crate::mem::LabelBytes;
 
 pub static MODULE_REQUEST: ModuleRequest = ModuleRequest::new(0);
 
@@ -57,6 +60,13 @@ pub extern "C" fn _start() -> ! {
             });
         }
     }
+
+    crate::println!(
+        "Usable memory: {}",
+        crate::mem::PHYSICAL_MEMORY_MANAGER
+            .usable_memory()
+            .label_bytes()
+    );
 
     usr::shell::init_shell();
 
