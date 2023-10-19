@@ -29,6 +29,18 @@ impl<T> Mutex<T> {
     }
 }
 
+impl<T> core::fmt::Debug for Mutex<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let locked = self.locked.load(Ordering::SeqCst) == true;
+        write!(f, "Mutex: {{ data: ",)?;
+        if locked {
+            write!(f, "<locked> }}")
+        } else {
+            write!(f, "{:?} }}", self.data)
+        }
+    }
+}
+
 pub struct MutexGuard<'a, T: ?Sized> {
     mutex: &'a Mutex<T>,
 }

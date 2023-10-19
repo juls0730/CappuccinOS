@@ -25,14 +25,14 @@ pub struct Console {
     rows: AtomicU16,
     pub cursor: Cursor,
     feature_bits: Mutex<u8>,
-    second_buffer: Mutex<Option<crate::drivers::video::Framebuffer>>,
+    pub second_buffer: Mutex<Option<crate::drivers::video::Framebuffer>>,
 }
 
-struct ConsoleFeatures {
+pub struct ConsoleFeatures {
     _reserved: [u8; 6],
-    serial_output: bool,
-    graphical_output: bool,
-    doubled_buffered: bool,
+    pub serial_output: bool,
+    pub graphical_output: bool,
+    pub doubled_buffered: bool,
 }
 
 impl Console {
@@ -48,7 +48,7 @@ impl Console {
     }
 
     #[inline]
-    pub fn reinit(&self, back_buffer_region: Option<&NonNullPtr<MemmapEntry>>) {
+    pub fn reinit(&self, back_buffer_region: Option<*mut u8>) {
         let framebuffer = crate::drivers::video::get_framebuffer();
 
         // Enable serial if it initialized correctly
@@ -67,7 +67,7 @@ impl Console {
             *self.feature_bits.lock().write() |= 1 << 2;
             let mut back_buffer = crate::drivers::video::get_framebuffer().unwrap();
 
-            back_buffer.pointer = back_buffer_region.unwrap().base as *mut u8;
+            back_buffer.pointer = back_buffer_region.unwrap();
 
             let row_size = back_buffer.pitch / (back_buffer.bpp / 8);
 
@@ -75,7 +75,7 @@ impl Console {
 
             unsafe {
                 crate::arch::set_mtrr(
-                    back_buffer_region.unwrap().base as u64,
+                    back_buffer_region.unwrap() as u64,
                     screen_size as u64,
                     crate::arch::MTRRMode::WriteCombining,
                 );
@@ -98,7 +98,7 @@ impl Console {
         self.rows.swap(rows as u16, Ordering::SeqCst);
     }
 
-    fn get_features(&self) -> ConsoleFeatures {
+    pub fn get_features(&self) -> ConsoleFeatures {
         let graphical_output = ((*self.feature_bits.lock().read()) & 0x01) != 0;
         let serial_output = ((*self.feature_bits.lock().read()) & 0x02) != 0;
         let doubled_buffered = ((*self.feature_bits.lock().read()) & 0x04) != 0;
@@ -286,7 +286,23 @@ impl Console {
 pub static CONSOLE: Lazy<Console> = Lazy::new(|| {
     let console = Console::new();
 
-    console.reinit(crate::mem::LARGEST_MEMORY_REGIONS.1);
+    let mut framebuffer_region = None;
+
+    for entry in crate::mem::MEMMAP.lock().read().iter() {
+        if entry.typ == limine::MemoryMapEntryType::Framebuffer {
+            framebuffer_region = Some(entry);
+        }
+    }
+
+    let mut back_buffer_region = None;
+
+    if let Some(framebuffer_region) = framebuffer_region {
+        back_buffer_region = crate::mem::PHYSICAL_MEMORY_MANAGER
+            .alloc(framebuffer_region.len as usize / crate::mem::pmm::PAGE_SIZE)
+            .ok();
+    }
+
+    console.reinit(back_buffer_region);
 
     return console;
 });

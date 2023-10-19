@@ -2,7 +2,7 @@ use alloc::{
     boxed::Box,
     string::{String, ToString},
     sync::Arc,
-    vec::Vec,
+    vec::{self, Vec},
 };
 
 use crate::drivers::storage::drive::{BlockDevice, GPTPartitionEntry};
@@ -149,7 +149,7 @@ pub struct FATFS<'a> {
     partition: GPTPartitionEntry,
     // FAT info
     fs_info: FSInfo,
-    fat: Arc<[u32]>,
+    fat: Option<Arc<[u32]>>,
     bpb: BIOSParameterBlock,
     fat_start: u64,
     fat_type: FatType,
@@ -187,21 +187,31 @@ impl<'a> FATFS<'a> {
 
         let bytes_per_fat = 512 * bpb.sectors_per_fat_ext as usize;
 
-        let mut fat: Vec<u32> = Vec::with_capacity(bytes_per_fat / 4);
-        unsafe { fat.set_len(fat.capacity()) };
+        let mut fat: Option<Arc<[u32]>> = None;
 
-        for i in 0..(bpb.sectors_per_fat_ext as usize) {
-            let sector = drive
-                .read(fat_start + i as u64, 1)
-                .expect("Failed to read FAT");
-            for j in 0..(512 / 4) {
-                fat[i * (512 / 4) + j] = u32::from_le_bytes([
-                    sector[j * 4],
-                    sector[(j * 4) + 1],
-                    sector[(j * 4) + 2],
-                    sector[(j * 4) + 3],
-                ])
+        if crate::KERNEL_FEATURES.fat_in_mem {
+            let mut fat_vec: Vec<u32> = Vec::with_capacity(bytes_per_fat / 4);
+            unsafe { fat_vec.set_len(fat_vec.capacity()) };
+
+            for i in 0..(bpb.sectors_per_fat_ext as usize) {
+                let sector = drive
+                    .read(fat_start + i as u64, 1)
+                    .expect("Failed to read FAT");
+                for j in 0..(512 / 4) {
+                    fat_vec[i * (512 / 4) + j] = u32::from_le_bytes([
+                        sector[j * 4],
+                        sector[(j * 4) + 1],
+                        sector[(j * 4) + 2],
+                        sector[(j * 4) + 3],
+                    ])
+                }
             }
+
+            fat = Some(Arc::from(fat_vec));
+        } else {
+            crate::log_info!(
+                "\033[33mWARNING\033[0m: FAT is not being stored in memory, this feature is experimental and file reads are expected to be slower."
+            )
         }
 
         let (total_sectors, fat_size) = if bpb.total_sectors == 0 {
@@ -232,7 +242,7 @@ impl<'a> FATFS<'a> {
             drive: Box::new(drive),
             partition,
             fs_info,
-            fat: Arc::from(fat),
+            fat,
             bpb,
             fat_start,
             fat_type,
@@ -368,7 +378,46 @@ impl<'a> FATFS<'a> {
     }
 
     fn get_next_cluster(&self, cluster: usize) -> u32 {
-        return self.fat[cluster] & 0x0FFFFFFF;
+        if crate::KERNEL_FEATURES.fat_in_mem {
+            return match self.fat_type {
+                FatType::Fat12 => {
+                    todo!();
+                }
+                FatType::Fat16 => {
+                    todo!();
+                }
+                FatType::Fat32 => self.fat.as_ref().unwrap()[cluster] & 0x0FFFFFFF,
+            };
+        } else {
+            let fat_entry_size = match self.fat_type {
+                FatType::Fat12 => 1, // 12 bits per entry
+                FatType::Fat16 => 2, // 16 bits per entry
+                FatType::Fat32 => 4, // "32" bits per entry
+            };
+            let entry_offset = cluster * fat_entry_size;
+            let entry_offset_in_sector = entry_offset % 512;
+
+            let sector_data = self
+                .drive
+                .read(self.fat_start + entry_offset as u64 / 512, 1)
+                .expect("Failed to read from FAT!");
+
+            match self.fat_type {
+                FatType::Fat12 => {
+                    todo!();
+                }
+                FatType::Fat16 => {
+                    todo!();
+                }
+                FatType::Fat32 => {
+                    let cluster_entry_bytes: [u8; 4] = sector_data
+                        [entry_offset_in_sector..=entry_offset_in_sector + 3]
+                        .try_into()
+                        .unwrap();
+                    return u32::from_le_bytes(cluster_entry_bytes) & 0x0FFFFFFF;
+                }
+            }
+        }
     }
 }
 

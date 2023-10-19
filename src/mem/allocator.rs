@@ -40,9 +40,9 @@ impl FreeBlock {
 }
 
 pub struct BuddyAllocator {
-    heap_start: AtomicPtr<u8>,
+    pub heap_start: AtomicPtr<u8>,
     heap_size: AtomicUsize,
-    pub free_lists: Mutex<[*mut FreeBlock; HEAP_BLOCKS]>,
+    free_lists: Mutex<[*mut FreeBlock; HEAP_BLOCKS]>,
     min_block_size: AtomicUsize,
     min_block_size_log2: AtomicU8,
 }
@@ -55,7 +55,7 @@ impl BuddyAllocator {
 
         free_lists_buf[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
 
-        let free_lists: Mutex<[*mut FreeBlock; 16]> = Mutex::new(free_lists_buf);
+        let free_lists: Mutex<[*mut FreeBlock; HEAP_BLOCKS]> = Mutex::new(free_lists_buf);
 
         let heap_start = AtomicPtr::new(heap_start as *mut u8);
         let heap_size = AtomicUsize::new(heap_size);
@@ -80,7 +80,7 @@ impl BuddyAllocator {
 
         free_lists_buf[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
 
-        let free_lists: Mutex<[*mut FreeBlock; 16]> = Mutex::new(free_lists_buf);
+        let free_lists: Mutex<[*mut FreeBlock; HEAP_BLOCKS]> = Mutex::new(free_lists_buf);
 
         (*self.free_lists.lock().write()) = *free_lists.lock().read();
         self.heap_start.swap(heap_start, SeqCst);

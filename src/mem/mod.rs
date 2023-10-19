@@ -6,7 +6,10 @@ use core::alloc::GlobalAlloc;
 use alloc::string::{String, ToString};
 use limine::{MemmapEntry, MemoryMapEntryType, NonNullPtr};
 
-use crate::libs::{lazy::Lazy, mutex::Mutex};
+use crate::{
+    libs::{lazy::Lazy, mutex::Mutex},
+    usr::tty::CONSOLE,
+};
 
 use self::{allocator::BuddyAllocator, pmm::PhysicalMemoryManager};
 
@@ -86,67 +89,67 @@ pub static HHDM_OFFSET: Lazy<usize> = Lazy::new(|| {
 //     return &mut memmap[0..null_index_ptr];
 // }
 
-pub static LARGEST_MEMORY_REGIONS: Lazy<(
-    &NonNullPtr<MemmapEntry>,
-    Option<&NonNullPtr<MemmapEntry>>,
-)> = Lazy::new(|| {
-    let memmap = MEMMAP.lock().read();
+// pub static LARGEST_MEMORY_REGIONS: Lazy<(
+//     &NonNullPtr<MemmapEntry>,
+//     Option<&NonNullPtr<MemmapEntry>>,
+// )> = Lazy::new(|| {
+//     let memmap = MEMMAP.lock().read();
 
-    let min_heap_size = 0x0008_0000;
-    let mut largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
-    let mut second_largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
-    let mut framebuffer_region: Option<&NonNullPtr<MemmapEntry>> = None;
+//     let min_heap_size = 0x0008_0000;
+//     let mut largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
+//     let mut second_largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
+//     let mut framebuffer_region: Option<&NonNullPtr<MemmapEntry>> = None;
 
-    for region in memmap.iter() {
-        if region.typ == limine::MemoryMapEntryType::Framebuffer {
-            framebuffer_region = Some(region);
-            continue;
-        }
+//     for region in memmap.iter() {
+//         if region.typ == limine::MemoryMapEntryType::Framebuffer {
+//             framebuffer_region = Some(region);
+//             continue;
+//         }
 
-        if !memory_section_is_usable(region) {
-            continue;
-        }
+//         if !memory_section_is_usable(region) {
+//             continue;
+//         }
 
-        if largest_region.is_none() || region.len > largest_region.unwrap().len {
-            second_largest_region = largest_region;
-            largest_region = Some(region);
-        } else if second_largest_region.is_none() || region.len > second_largest_region.unwrap().len
-        {
-            second_largest_region = Some(region);
-        }
-    }
+//         if largest_region.is_none() || region.len > largest_region.unwrap().len {
+//             second_largest_region = largest_region;
+//             largest_region = Some(region);
+//         } else if second_largest_region.is_none() || region.len > second_largest_region.unwrap().len
+//         {
+//             second_largest_region = Some(region);
+//         }
+//     }
 
-    if largest_region.is_none() {
-        panic!("Suitable memory regions not found!");
-    }
+//     if largest_region.is_none() {
+//         panic!("Suitable memory regions not found!");
+//     }
 
-    let largest_region = largest_region.unwrap();
+//     let largest_region = largest_region.unwrap();
 
-    if framebuffer_region.is_none() || second_largest_region.is_none() {
-        return (largest_region, None);
-    }
+//     if framebuffer_region.is_none() || second_largest_region.is_none() {
+//         return (largest_region, None);
+//     }
 
-    let framebuffer_size = framebuffer_region.unwrap().len;
+//     let framebuffer_size = framebuffer_region.unwrap().len;
 
-    if second_largest_region.unwrap().len >= framebuffer_size {
-        return (largest_region, second_largest_region);
-    }
+//     if second_largest_region.unwrap().len >= framebuffer_size {
+//         return (largest_region, second_largest_region);
+//     }
 
-    let shrunk_heap = largest_region.len - framebuffer_size;
+//     let shrunk_heap = largest_region.len - framebuffer_size;
 
-    if shrunk_heap < min_heap_size as u64 {
-        return (largest_region, None);
-    }
+//     if shrunk_heap < min_heap_size as u64 {
+//         return (largest_region, None);
+//     }
 
-    unsafe {
-        (*second_largest_region.unwrap().as_ptr()).base = largest_region.base;
+//     unsafe {
+//         (*second_largest_region.unwrap().as_ptr()).base = largest_region.base;
 
-        (*largest_region.as_ptr()).len = shrunk_heap;
-        (*second_largest_region.unwrap().as_ptr()).base += shrunk_heap;
-    }
+//         (*largest_region.as_ptr()).len = shrunk_heap;
+//         (*second_largest_region.unwrap().as_ptr()).base += shrunk_heap;
+//     }
 
-    return (largest_region, second_largest_region);
-});
+//     return (largest_region, second_largest_region);
+// });
 
 pub static PHYSICAL_MEMORY_MANAGER: Lazy<PhysicalMemoryManager> =
     Lazy::new(|| PhysicalMemoryManager::new());
@@ -165,13 +168,17 @@ unsafe impl GlobalAlloc for Allocator {
     }
 }
 
+const HEAP_PAGES: usize = 4096;
+const HEAP_SIZE: usize = HEAP_PAGES * 1024;
+
 #[global_allocator]
 pub static ALLOCATOR: Allocator = Allocator {
     inner: Lazy::new(|| {
-        BuddyAllocator::new_unchecked(
-            LARGEST_MEMORY_REGIONS.0.base as *mut u8,
-            LARGEST_MEMORY_REGIONS.0.len as usize,
-        )
+        let heap_start = PHYSICAL_MEMORY_MANAGER
+            .alloc(HEAP_PAGES)
+            .expect("Failed to allocate heap!");
+
+        BuddyAllocator::new_unchecked(heap_start, HEAP_SIZE)
     }),
 };
 
@@ -181,19 +188,24 @@ fn memory_section_is_usable(entry: &MemmapEntry) -> bool {
 }
 
 pub fn log_info() {
-    let (largest_region, second_largest_region) = *LARGEST_MEMORY_REGIONS;
-
     crate::log_info!(
-        "Using largest section with: {} bytes of memory for heap at {:#X}",
-        largest_region.len,
-        largest_region.base
+        "Initialized heap with {} of memory at {:#X}",
+        HEAP_SIZE.label_bytes(),
+        ALLOCATOR
+            .inner
+            .heap_start
+            .load(core::sync::atomic::Ordering::SeqCst) as usize
     );
 
-    if second_largest_region.is_some() {
+    if CONSOLE.get_features().doubled_buffered {
+        let row_size = CONSOLE.second_buffer.lock().read().unwrap().pitch
+            / (CONSOLE.second_buffer.lock().read().unwrap().bpp / 8);
+
+        let screen_size = row_size * CONSOLE.second_buffer.lock().read().unwrap().height;
         crate::log_info!(
-            "Using second largest section with: {} bytes of memory for framebuffer mirroring at {:#X}",
-            second_largest_region.unwrap().len,
-            second_largest_region.unwrap().base
+            "Initialized framebuffer mirroring with {} at {:#X}",
+            (screen_size * 4).label_bytes(),
+            CONSOLE.second_buffer.lock().read().unwrap().pointer as usize
         );
     }
 
