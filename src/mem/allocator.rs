@@ -69,24 +69,6 @@ impl BuddyAllocator {
         }
     }
 
-    pub fn set_heap(&self, heap_start: *mut u8, heap_size: usize) {
-        // Reconstruct heap to account for new heap space.
-        let min_block_size = heap_size >> (HEAP_BLOCKS - 1);
-
-        self.min_block_size.swap(min_block_size, SeqCst);
-        self.min_block_size_log2.swap(log2(min_block_size), SeqCst);
-
-        let mut free_lists_buf: [*mut FreeBlock; HEAP_BLOCKS] = [ptr::null_mut(); HEAP_BLOCKS];
-
-        free_lists_buf[HEAP_BLOCKS - 1] = heap_start as *mut FreeBlock;
-
-        let free_lists: Mutex<[*mut FreeBlock; HEAP_BLOCKS]> = Mutex::new(free_lists_buf);
-
-        (*self.free_lists.lock().write()) = *free_lists.lock().read();
-        self.heap_start.swap(heap_start, SeqCst);
-        self.heap_size.swap(heap_size, SeqCst);
-    }
-
     fn allocation_size(&self, mut size: usize, align: usize) -> Option<usize> {
         if !align.is_power_of_two() {
             return None;

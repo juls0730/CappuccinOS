@@ -31,7 +31,7 @@ impl<T> Mutex<T> {
 
 impl<T> core::fmt::Debug for Mutex<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let locked = self.locked.load(Ordering::SeqCst) == true;
+        let locked = self.locked.load(Ordering::SeqCst);
         write!(f, "Mutex: {{ data: ",)?;
         if locked {
             write!(f, "<locked> }}")

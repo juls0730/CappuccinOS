@@ -6,7 +6,6 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use limine::{MemmapEntry, NonNullPtr};
 
 use crate::{
     libs::{lazy::Lazy, mutex::Mutex},
@@ -94,8 +93,8 @@ impl Console {
 
         let columns = framebuffer.width / 8;
         let rows = framebuffer.height / 16;
-        self.columns.swap(columns as u16, Ordering::SeqCst);
-        self.rows.swap(rows as u16, Ordering::SeqCst);
+        self.columns.store(columns as u16, Ordering::SeqCst);
+        self.rows.store(rows as u16, Ordering::SeqCst);
     }
 
     pub fn get_features(&self) -> ConsoleFeatures {
@@ -319,8 +318,8 @@ impl Cursor {
     }
 
     pub fn set_pos(&self, new_cx: u16, new_cy: u16) {
-        self.cx.swap(new_cx, Ordering::SeqCst);
-        self.cy.swap(new_cy, Ordering::SeqCst);
+        self.cx.store(new_cx, Ordering::SeqCst);
+        self.cy.store(new_cy, Ordering::SeqCst);
     }
 
     fn move_right(&self) {
@@ -341,11 +340,11 @@ impl Cursor {
                 CONSOLE.scroll_console();
 
                 self.cy
-                    .swap(((framebuffer.height / 16) - 1) as u16, Ordering::SeqCst);
-                self.cx.swap(0, Ordering::SeqCst);
+                    .store(((framebuffer.height / 16) - 1) as u16, Ordering::SeqCst);
+                self.cx.store(0, Ordering::SeqCst);
             } else {
                 self.cy.fetch_add(1, Ordering::SeqCst);
-                self.cx.swap(0, Ordering::SeqCst);
+                self.cx.store(0, Ordering::SeqCst);
             }
         } else {
             self.cx.fetch_add(1, Ordering::SeqCst);
@@ -367,7 +366,7 @@ impl Cursor {
 
         if self.cx.load(Ordering::SeqCst) == 0 {
             self.cx
-                .swap((framebuffer.width / 8) as u16 - 1, Ordering::SeqCst);
+                .store((framebuffer.width / 8) as u16 - 1, Ordering::SeqCst);
             self.cy.fetch_sub(1, Ordering::SeqCst);
         } else {
             self.cx.fetch_sub(1, Ordering::SeqCst);
@@ -375,16 +374,16 @@ impl Cursor {
     }
 
     pub fn set_fg(&self, new_fg: u32) {
-        self.fg.swap(new_fg, Ordering::SeqCst);
+        self.fg.store(new_fg, Ordering::SeqCst);
     }
 
     pub fn set_bg(&self, new_bg: u32) {
-        self.bg.swap(new_bg, Ordering::SeqCst);
+        self.bg.store(new_bg, Ordering::SeqCst);
     }
 
     pub fn set_color(&self, new_fg: u32, new_bg: u32) {
-        self.fg.swap(new_fg, Ordering::SeqCst);
-        self.bg.swap(new_bg, Ordering::SeqCst);
+        self.fg.store(new_fg, Ordering::SeqCst);
+        self.bg.store(new_bg, Ordering::SeqCst);
     }
 }
 

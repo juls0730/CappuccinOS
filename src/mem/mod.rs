@@ -3,8 +3,7 @@ pub mod pmm;
 
 use core::alloc::GlobalAlloc;
 
-use alloc::string::{String, ToString};
-use limine::{MemmapEntry, MemoryMapEntryType, NonNullPtr};
+use limine::{MemmapEntry, NonNullPtr};
 
 use crate::{
     libs::{lazy::Lazy, mutex::Mutex},
@@ -89,68 +88,6 @@ pub static HHDM_OFFSET: Lazy<usize> = Lazy::new(|| {
 //     return &mut memmap[0..null_index_ptr];
 // }
 
-// pub static LARGEST_MEMORY_REGIONS: Lazy<(
-//     &NonNullPtr<MemmapEntry>,
-//     Option<&NonNullPtr<MemmapEntry>>,
-// )> = Lazy::new(|| {
-//     let memmap = MEMMAP.lock().read();
-
-//     let min_heap_size = 0x0008_0000;
-//     let mut largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
-//     let mut second_largest_region: Option<&NonNullPtr<MemmapEntry>> = None;
-//     let mut framebuffer_region: Option<&NonNullPtr<MemmapEntry>> = None;
-
-//     for region in memmap.iter() {
-//         if region.typ == limine::MemoryMapEntryType::Framebuffer {
-//             framebuffer_region = Some(region);
-//             continue;
-//         }
-
-//         if !memory_section_is_usable(region) {
-//             continue;
-//         }
-
-//         if largest_region.is_none() || region.len > largest_region.unwrap().len {
-//             second_largest_region = largest_region;
-//             largest_region = Some(region);
-//         } else if second_largest_region.is_none() || region.len > second_largest_region.unwrap().len
-//         {
-//             second_largest_region = Some(region);
-//         }
-//     }
-
-//     if largest_region.is_none() {
-//         panic!("Suitable memory regions not found!");
-//     }
-
-//     let largest_region = largest_region.unwrap();
-
-//     if framebuffer_region.is_none() || second_largest_region.is_none() {
-//         return (largest_region, None);
-//     }
-
-//     let framebuffer_size = framebuffer_region.unwrap().len;
-
-//     if second_largest_region.unwrap().len >= framebuffer_size {
-//         return (largest_region, second_largest_region);
-//     }
-
-//     let shrunk_heap = largest_region.len - framebuffer_size;
-
-//     if shrunk_heap < min_heap_size as u64 {
-//         return (largest_region, None);
-//     }
-
-//     unsafe {
-//         (*second_largest_region.unwrap().as_ptr()).base = largest_region.base;
-
-//         (*largest_region.as_ptr()).len = shrunk_heap;
-//         (*second_largest_region.unwrap().as_ptr()).base += shrunk_heap;
-//     }
-
-//     return (largest_region, second_largest_region);
-// });
-
 pub static PHYSICAL_MEMORY_MANAGER: Lazy<PhysicalMemoryManager> =
     Lazy::new(|| PhysicalMemoryManager::new());
 
@@ -181,11 +118,6 @@ pub static ALLOCATOR: Allocator = Allocator {
         BuddyAllocator::new_unchecked(heap_start, HEAP_SIZE)
     }),
 };
-
-#[inline]
-fn memory_section_is_usable(entry: &MemmapEntry) -> bool {
-    return entry.typ == MemoryMapEntryType::Usable;
-}
 
 pub fn log_info() {
     crate::log_info!(

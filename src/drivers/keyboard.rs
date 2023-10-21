@@ -67,6 +67,7 @@ pub fn init() -> Result<(), KBDError> {
     let result = inb(KBD_DATA_PORT);
 
     if result != 0x55 {
+        crate::println!("Got result: {result}");
         return Err(KBDError::TestFailed);
     }
 
@@ -83,11 +84,6 @@ pub fn init() -> Result<(), KBDError> {
     inb(KBD_COMMAND_AND_STATUS_PORT);
 
     return Ok(());
-}
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub fn consume_scancode() {
-    let _ = inb(KBD_DATA_PORT);
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

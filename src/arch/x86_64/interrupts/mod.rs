@@ -40,7 +40,6 @@ static IDT: Mutex<[IdtEntry; 256]> = Mutex::new([IdtEntry::new(); 256]);
 pub enum InterruptIndex {
     Timer = PIC_1_OFFSET,
     Keyboard,
-    Ide = PIC_1_OFFSET + 14,
 }
 
 impl InterruptIndex {

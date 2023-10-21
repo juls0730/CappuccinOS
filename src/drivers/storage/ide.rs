@@ -1,11 +1,11 @@
-use core::{marker::PhantomData, mem::size_of};
+use core::mem::size_of;
 
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
 use crate::{
     arch::io::{inb, insw, inw, outb},
     drivers::{
-        fs::{fat, vfs::VFSFileSystem},
+        fs::fat,
         storage::drive::{GPTBlock, GPTPartitionEntry},
     },
     libs::mutex::Mutex,

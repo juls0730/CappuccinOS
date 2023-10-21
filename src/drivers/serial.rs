@@ -31,7 +31,7 @@ pub fn init_serial() -> u8 {
     // Check if serial is faulty
     if inb(PORT + 0) != 0xAE {
         crate::log_error!("Serial Driver failed to initialize");
-        POISONED.swap(true, core::sync::atomic::Ordering::SeqCst);
+        POISONED.store(true, core::sync::atomic::Ordering::Relaxed);
         return 1;
     }
 

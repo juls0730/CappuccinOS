@@ -1,15 +1,12 @@
 // Physical Memory Manager (pmm)
 
-use core::sync::atomic::AtomicUsize;
-use core::sync::atomic::Ordering;
-
-use crate::libs::mutex::Mutex;
+use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 pub const PAGE_SIZE: usize = 4096;
 
 #[derive(Debug)]
 pub struct PhysicalMemoryManager {
-    bitmap: Mutex<*mut u8>,
+    bitmap: AtomicPtr<u8>,
     highest_page_index: AtomicUsize,
     last_used_index: AtomicUsize,
     usable_pages: AtomicUsize,
@@ -20,7 +17,7 @@ pub struct PhysicalMemoryManager {
 impl PhysicalMemoryManager {
     pub fn new() -> Self {
         let pmm = Self {
-            bitmap: Mutex::new(core::ptr::null_mut()),
+            bitmap: AtomicPtr::new(core::ptr::null_mut()),
             highest_page_index: AtomicUsize::new(0),
             last_used_index: AtomicUsize::new(0),
             usable_pages: AtomicUsize::new(0),
@@ -49,7 +46,7 @@ impl PhysicalMemoryManager {
         }
 
         pmm.highest_page_index
-            .swap(highest_addr / PAGE_SIZE, Ordering::SeqCst);
+            .store(highest_addr / PAGE_SIZE, Ordering::SeqCst);
         let bitmap_size = ((pmm.highest_page_index.load(Ordering::SeqCst) / 8) + PAGE_SIZE - 1)
             & !(PAGE_SIZE - 1);
 
@@ -60,7 +57,7 @@ impl PhysicalMemoryManager {
 
             if entry.len as usize >= bitmap_size {
                 let ptr = (entry.base as usize + hhdm_offset) as *mut u8;
-                *pmm.bitmap.lock().write() = (entry.base as usize + hhdm_offset) as *mut u8;
+                pmm.bitmap.store(ptr, Ordering::SeqCst);
 
                 unsafe {
                     // Set the bit map to non-free
@@ -119,7 +116,7 @@ impl PhysicalMemoryManager {
         let mut ret = self.inner_alloc(pages, self.highest_page_index.load(Ordering::SeqCst));
 
         if ret.is_null() {
-            self.last_used_index.swap(0, Ordering::SeqCst);
+            self.last_used_index.store(0, Ordering::SeqCst);
             ret = self.inner_alloc(pages, last);
 
             // If ret is still null, we have ran out of memory, panic
@@ -163,7 +160,8 @@ impl PhysicalMemoryManager {
         unsafe {
             let byte_index = bit / 8;
             let bit_index = bit % 8;
-            (*self.bitmap.lock().write().add(byte_index)) & (1 << bit_index) != 0
+            // (*self.bitmap.lock().write().add(byte_index)) & (1 << bit_index) != 0
+            return (*self.bitmap.load(Ordering::SeqCst).add(byte_index)) & (1 << bit_index) != 0;
         }
     }
 
@@ -172,7 +170,7 @@ impl PhysicalMemoryManager {
         unsafe {
             let byte_index = bit / 8;
             let bit_index = bit % 8;
-            *self.bitmap.lock().write().add(byte_index) |= 1 << bit_index;
+            (*self.bitmap.load(Ordering::SeqCst).add(byte_index)) |= 1 << bit_index;
         }
     }
 
@@ -181,7 +179,7 @@ impl PhysicalMemoryManager {
         unsafe {
             let byte_index = bit / 8;
             let bit_index = bit % 8;
-            *self.bitmap.lock().write().add(byte_index) &= !(1 << bit_index);
+            (*self.bitmap.load(Ordering::SeqCst).add(byte_index)) &= !(1 << bit_index);
         }
     }
 
