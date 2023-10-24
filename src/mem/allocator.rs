@@ -3,6 +3,8 @@
 // By using A custom Mutex implementation (which also sucks) and dereferencing all the pointers,
 // I was able to remove all the mut's In the original code.
 
+// TODO: Replace this with a slab allocator that can take advantage of the page frame allocator
+
 use core::alloc::{GlobalAlloc, Layout};
 use core::cmp::{max, min};
 use core::ptr;

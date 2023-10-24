@@ -557,6 +557,13 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
             )
             .expect("Failed to read partition table");
 
+        crate::println!(
+            "{}, {}, {}",
+            (gpt.partition_entry_count * gpt.partition_entry_size) as usize / ATA_SECTOR_SIZE,
+            gpt.partition_entry_count,
+            gpt.partition_entry_size
+        );
+
         for i in 0..gpt.partition_entry_count {
             let entry_offset = (i * gpt.partition_entry_size) as usize;
 

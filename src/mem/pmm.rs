@@ -7,22 +7,20 @@ pub const PAGE_SIZE: usize = 4096;
 #[derive(Debug)]
 pub struct PhysicalMemoryManager {
     bitmap: AtomicPtr<u8>,
-    highest_page_index: AtomicUsize,
-    last_used_index: AtomicUsize,
+    highest_page_idx: AtomicUsize,
+    last_used_page_idx: AtomicUsize,
     usable_pages: AtomicUsize,
     used_pages: AtomicUsize,
-    reserved_pages: AtomicUsize,
 }
 
 impl PhysicalMemoryManager {
     pub fn new() -> Self {
         let pmm = Self {
             bitmap: AtomicPtr::new(core::ptr::null_mut()),
-            highest_page_index: AtomicUsize::new(0),
-            last_used_index: AtomicUsize::new(0),
+            highest_page_idx: AtomicUsize::new(0),
+            last_used_page_idx: AtomicUsize::new(0),
             usable_pages: AtomicUsize::new(0),
             used_pages: AtomicUsize::new(0),
-            reserved_pages: AtomicUsize::new(0),
         };
 
         let hhdm_offset = *super::HHDM_OFFSET;
@@ -38,17 +36,14 @@ impl PhysicalMemoryManager {
                         highest_addr = (entry.base + entry.len) as usize;
                     }
                 }
-                _ => {
-                    pmm.reserved_pages
-                        .fetch_add(entry.len as usize / PAGE_SIZE, Ordering::SeqCst);
-                }
+                _ => {}
             }
         }
 
-        pmm.highest_page_index
+        pmm.highest_page_idx
             .store(highest_addr / PAGE_SIZE, Ordering::SeqCst);
-        let bitmap_size = ((pmm.highest_page_index.load(Ordering::SeqCst) / 8) + PAGE_SIZE - 1)
-            & !(PAGE_SIZE - 1);
+        let bitmap_size =
+            ((pmm.highest_page_idx.load(Ordering::SeqCst) / 8) + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
 
         for entry in super::MEMMAP.lock().write().iter_mut() {
             if entry.typ != limine::MemoryMapEntryType::Usable {
@@ -76,14 +71,8 @@ impl PhysicalMemoryManager {
                 continue;
             }
 
-            let mut i: usize = 0;
-            loop {
-                if i >= entry.len as usize {
-                    break;
-                }
-
-                pmm.bitmap_reset((entry.base as usize + i) / PAGE_SIZE);
-                i += PAGE_SIZE;
+            for i in 0..(entry.len as usize / PAGE_SIZE) {
+                pmm.bitmap_reset((entry.base as usize + (i * PAGE_SIZE)) / PAGE_SIZE);
             }
         }
 
@@ -93,41 +82,45 @@ impl PhysicalMemoryManager {
     fn inner_alloc(&self, pages: usize, limit: usize) -> *mut u8 {
         let mut p: usize = 0;
 
-        while self.last_used_index.load(Ordering::SeqCst) < limit {
-            if self.bitmap_test(self.last_used_index.fetch_add(1, Ordering::SeqCst)) != true {
-                p += 1;
-                if p == pages {
-                    let page = self.last_used_index.load(Ordering::SeqCst) - pages;
-                    for i in page..self.last_used_index.load(Ordering::SeqCst) {
-                        self.bitmap_set(i);
-                    }
-                    return (page * PAGE_SIZE) as *mut u8;
-                }
-            } else {
+        while self.last_used_page_idx.load(Ordering::SeqCst) < limit {
+            if self.bitmap_test(self.last_used_page_idx.fetch_add(1, Ordering::SeqCst)) == true {
                 p = 0;
+                continue;
+            }
+
+            p += 1;
+            if p == pages {
+                let page = self.last_used_page_idx.load(Ordering::SeqCst) - pages;
+                for i in page..self.last_used_page_idx.load(Ordering::SeqCst) {
+                    self.bitmap_set(i);
+                }
+                return (page * PAGE_SIZE) as *mut u8;
             }
         }
 
+        // We have hit the search limit, but did not find any suitable memory regions starting from last_used_page_idx
         return core::ptr::null_mut();
     }
 
     pub fn alloc_nozero(&self, pages: usize) -> Result<*mut u8, ()> {
-        let last = self.last_used_index.load(Ordering::SeqCst);
-        let mut ret = self.inner_alloc(pages, self.highest_page_index.load(Ordering::SeqCst));
+        // Attempt to allocate n pages with a search limit of the amount of usable pages
+        let mut page_addr = self.inner_alloc(pages, self.highest_page_idx.load(Ordering::SeqCst));
 
-        if ret.is_null() {
-            self.last_used_index.store(0, Ordering::SeqCst);
-            ret = self.inner_alloc(pages, last);
+        if page_addr.is_null() {
+            // If page_addr is null, then attempt to allocate n pages, but starting from
+            // The beginning of the bitmap and with a limit of the old last_used_page_idx
+            let last = self.last_used_page_idx.swap(0, Ordering::SeqCst);
+            page_addr = self.inner_alloc(pages, last);
 
-            // If ret is still null, we have ran out of memory, panic
-            if ret.is_null() {
+            // If page_addr is still null, we have ran out of usable memory
+            if page_addr.is_null() {
                 return Err(());
             }
         }
 
         self.used_pages.fetch_add(pages, Ordering::SeqCst);
 
-        return Ok(ret);
+        return Ok(page_addr);
     }
 
     pub fn alloc(&self, pages: usize) -> Result<*mut u8, ()> {
@@ -140,16 +133,10 @@ impl PhysicalMemoryManager {
     }
 
     pub fn dealloc(&self, addr: *mut u8, pages: usize) {
-        let page = (addr as *mut u64).addr() / PAGE_SIZE;
+        let page = addr as usize / PAGE_SIZE;
 
-        let mut i: usize = 0;
-        loop {
-            if i >= page + pages {
-                break;
-            }
-
+        for i in page..(page + pages) {
             self.bitmap_reset(i);
-            i += 1;
         }
 
         self.used_pages.fetch_sub(pages, Ordering::SeqCst);
@@ -160,7 +147,6 @@ impl PhysicalMemoryManager {
         unsafe {
             let byte_index = bit / 8;
             let bit_index = bit % 8;
-            // (*self.bitmap.lock().write().add(byte_index)) & (1 << bit_index) != 0
             return (*self.bitmap.load(Ordering::SeqCst).add(byte_index)) & (1 << bit_index) != 0;
         }
     }

@@ -214,3 +214,34 @@ impl LabelBytes for usize {
         }
     }
 }
+
+pub fn test_page_frame_allocator(iterations: usize) {
+    crate::log_info!("Testing page allocator");
+
+    for i in 0..iterations {
+        let a = crate::mem::PHYSICAL_MEMORY_MANAGER.alloc(20);
+
+        let percent_complete = (i as f64 / iterations as f64) * 100.0;
+
+        crate::print!("[ ");
+        for j in 0..50 {
+            if (j * 2) < percent_complete as usize {
+                crate::print!("#");
+            } else {
+                crate::print!(".");
+            }
+        }
+        crate::print!(" ] {percent_complete:.1}%\r");
+
+        if a.is_err() {
+            crate::log_error!(
+                "Page frame allocator failed to allocate {iterations} pages on iteration {i}!"
+            );
+            break;
+        }
+
+        crate::mem::PHYSICAL_MEMORY_MANAGER.dealloc(a.unwrap(), 20);
+    }
+
+    crate::log_ok!("Page frame allocator successfully allocated {iterations} pages!");
+}

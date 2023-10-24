@@ -66,7 +66,7 @@ fn read_pci_to_pci_secondary_bus(bus: u8, device: u8, func: u8) -> u8 {
     return (read_pci_config(bus, device, func, 0x10) & 0xFF) as u8;
 }
 
-pub fn get_pci_bar_addresses(bus: u8, device: u8, func: u8) -> (u32, u32, u32, u32, u32, u32) {
+pub fn _get_pci_bar_addresses(bus: u8, device: u8, func: u8) -> (u32, u32, u32, u32, u32, u32) {
     let bar0 = read_pci_config(bus, device, func, 0x10);
     let bar1 = read_pci_config(bus, device, func, 0x14);
     let bar2 = read_pci_config(bus, device, func, 0x18);
