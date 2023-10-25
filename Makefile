@@ -48,7 +48,8 @@ copy-initramfs-files:
 		echo "Hello World from Initramfs" > ${INITRAMFS_PATH}/example.txt
 
 compile-initramfs: copy-initramfs-files
-		mksquashfs ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.img
+		# Make squashfs without compression temporaily so I can get it working before I have to write a gzip driver
+		mksquashfs ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.img -no-compression
 
 copy-iso-files:
 		# Limine files
