@@ -1,15 +1,17 @@
+use core::sync::atomic::{AtomicU8, Ordering};
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::drivers::keyboard::set_leds;
-use crate::{drivers::keyboard::Key, libs::mutex::Mutex};
+use crate::drivers::keyboard::Key;
 
 struct ModStatus {
-    pub win: bool,      // first bit
-    pub ctrl: bool,     // second bit
-    pub alt: bool,      // third bit
-    pub shift: bool,    // forth bit
-    pub caps: bool,     // fifth bit
-    pub num_lock: bool, // sixth bit
-    pub scr_lock: bool, // (possibly unnecessary) seventh bit
+    pub win: bool,      // first bit (0000_0001)
+    pub ctrl: bool,     // second bit (0000_0010)
+    pub alt: bool,      // third bit (0000_0100)
+    pub shift: bool,    // forth bit (0000_1000)
+    pub caps: bool,     // fifth bit (0001_0000)
+    pub num_lock: bool, // sixth bit (0010_0000)
+    pub scr_lock: bool, // (possibly unnecessary) seventh bit (0100_0000)
 }
 
 impl ModStatus {
@@ -41,21 +43,21 @@ impl ModStatus {
 }
 
 struct ModStatusBits {
-    status: Mutex<u8>,
-    led_status: Mutex<u8>,
+    status: AtomicU8,
+    led_status: AtomicU8,
 }
 
 impl ModStatusBits {
     #[inline]
     const fn new() -> Self {
         return Self {
-            status: Mutex::new(0u8),
-            led_status: Mutex::new(0u8),
+            status: AtomicU8::new(0u8),
+            led_status: AtomicU8::new(0u8),
         };
     }
 
     fn get_status(&self) -> ModStatus {
-        let status = self.status.lock().read();
+        let status = self.status.load(Ordering::SeqCst);
 
         return ModStatus {
             win: ((status >> 0) & 1) != 0,
@@ -69,8 +71,7 @@ impl ModStatusBits {
     }
 
     fn set_modifier_key(&self, key: &str, status: bool) {
-        let mut led_status_lock = self.led_status.lock();
-        let led_status = led_status_lock.write();
+        let mut led_status = self.led_status.load(Ordering::SeqCst);
         let mut mod_status = self.get_status();
 
         match key {
@@ -79,15 +80,15 @@ impl ModStatusBits {
             "alt" => mod_status.alt = status,
             "shift" => mod_status.shift = status,
             "caps" => {
-                *led_status ^= 0b00000100;
+                led_status ^= 0b00000100;
                 mod_status.caps = status
             }
             "num_lock" => {
-                *led_status ^= 0b00000010;
+                led_status ^= 0b00000010;
                 mod_status.num_lock = status
             }
             "scr_lock" => {
-                *led_status ^= 0b00000100;
+                led_status ^= 0b00000100;
                 mod_status.scr_lock = status
             }
             _ => return,
@@ -95,10 +96,11 @@ impl ModStatusBits {
 
         // set Keyboard led (caps, num lock, scroll lock)
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        set_leds(*led_status);
+        set_leds(led_status);
 
+        self.led_status.store(led_status, Ordering::SeqCst);
         let new_value = mod_status.to_byte();
-        *self.status.lock().write() = new_value;
+        self.status.store(new_value, Ordering::SeqCst);
     }
 }
 

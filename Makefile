@@ -88,6 +88,9 @@ else
 endif
 
 build-iso: partition-iso
+		nm target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf > scripts/symbols.table
+		python scripts/demangle-symbols.py
+		mv scripts/symbols.table ${ISO_PATH}/boot
 		# Install the Limine bootloader on the ISO
 		./limine/limine bios-install ${IMAGE_PATH}
 

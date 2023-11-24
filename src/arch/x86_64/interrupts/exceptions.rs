@@ -30,6 +30,7 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) ->
             log_error!("EXCEPTION!");
         }
     }
+
     log_info!(
         "INT: {:x} EIP: {:X}, CS: {:X}, EFLAGS: {:b}",
         int,
@@ -37,6 +38,12 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) ->
         cs,
         eflags
     );
+
+    // unsafe {
+    //     core::arch::asm!("cli");
+    // };
+
+    crate::arch::stack_trace::print_stack_trace(6);
 
     hcf();
 }

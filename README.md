@@ -44,6 +44,7 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 Before building CappuccinOS, make sure you have the following installed on your machine:
 
 - rust
+- python
 - binutils
 - sgdisk
 - mtools
@@ -64,22 +65,19 @@ curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain none
 Install the dependencies:
 <details>
     <summary>Arch</summary>
-    
-    ```BASH
-    sudo pacman -S binutils gptfdisk mtools squashfs-tools
+
+    sudo pacman -S binutils gptfdisk mtools squashfs-tools python
     # Optionally
     sudo pacman -S qemu-system-x86
-    ```
 </details>
 
 <details>
     <summary>Ubuntu</summary>
-    
-    ```BASH
+    Python should be installed by default, and if it's not, make an issue or a PR and I'll fix it
+
     sudo apt install binutils gdisk mtools squashfs-tools
     # Optionally
     sudo apt install qemu
-    ```
 </details>
 
 ## Usage

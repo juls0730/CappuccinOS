@@ -1,4 +1,4 @@
-use core::sync::atomic::{AtomicU16, AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU16, AtomicU32, AtomicU8, Ordering};
 
 use alloc::{
     alloc::{alloc, dealloc},
@@ -23,7 +23,7 @@ pub struct Console {
     columns: AtomicU16,
     rows: AtomicU16,
     pub cursor: Cursor,
-    feature_bits: Mutex<u8>,
+    feature_bits: AtomicU8,
     pub second_buffer: Mutex<Option<crate::drivers::video::Framebuffer>>,
 }
 
@@ -41,7 +41,7 @@ impl Console {
             columns: AtomicU16::new(0),
             rows: AtomicU16::new(0),
             cursor: Cursor::new(),
-            feature_bits: Mutex::new(0b00000000),
+            feature_bits: AtomicU8::new(0b00000000),
             second_buffer: Mutex::new(None),
         }
     }
@@ -52,18 +52,27 @@ impl Console {
 
         // Enable serial if it initialized correctly
         if crate::drivers::serial::POISONED.load(Ordering::SeqCst) == false {
-            *self.feature_bits.lock().write() |= 1 << 1;
+            self.feature_bits.store(
+                self.feature_bits.load(Ordering::SeqCst) | 1 << 1,
+                Ordering::SeqCst,
+            );
         }
 
         // Enable graphical output
         if framebuffer.is_some() {
-            *self.feature_bits.lock().write() |= 1;
+            self.feature_bits.store(
+                self.feature_bits.load(Ordering::SeqCst) | 1,
+                Ordering::SeqCst,
+            );
         } else {
             return;
         }
 
         if back_buffer_region.is_some() {
-            *self.feature_bits.lock().write() |= 1 << 2;
+            self.feature_bits.store(
+                self.feature_bits.load(Ordering::SeqCst) | 1 << 2,
+                Ordering::SeqCst,
+            );
             let mut back_buffer = crate::drivers::video::get_framebuffer().unwrap();
 
             back_buffer.pointer = back_buffer_region.unwrap();
@@ -92,9 +101,11 @@ impl Console {
     }
 
     pub fn get_features(&self) -> ConsoleFeatures {
-        let graphical_output = ((*self.feature_bits.lock().read()) & 0x01) != 0;
-        let serial_output = ((*self.feature_bits.lock().read()) & 0x02) != 0;
-        let doubled_buffered = ((*self.feature_bits.lock().read()) & 0x04) != 0;
+        let feature_bits = self.feature_bits.load(Ordering::SeqCst);
+
+        let graphical_output = (feature_bits & 0x01) != 0;
+        let serial_output = (feature_bits & 0x02) != 0;
+        let doubled_buffered = (feature_bits & 0x04) != 0;
 
         return ConsoleFeatures {
             _reserved: [0; 6],
@@ -677,7 +688,9 @@ pub fn exec(command: &str) {
             return;
         }
 
-        let file = crate::drivers::fs::vfs::VFS_INSTANCES.lock().read()[0].open(&args[0]);
+        let vfs_lock = crate::drivers::fs::vfs::VFS_INSTANCES.lock();
+
+        let file = vfs_lock.read()[0].open(&args[0]);
 
         if file.is_err() {
             println!("read: Unable to read file!");

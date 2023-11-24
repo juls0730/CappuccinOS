@@ -33,61 +33,6 @@ pub static HHDM_OFFSET: Lazy<usize> = Lazy::new(|| {
     return hhdm.offset as usize;
 });
 
-// fn stitch_memory_map(memmap: &mut [NonNullPtr<MemmapEntry>]) -> &mut [NonNullPtr<MemmapEntry>] {
-//     let mut null_index_ptr = 0;
-//
-//     crate::println!("====== MEMORY MAP ======");
-//     for entry in memmap.iter() {
-//         crate::println!(
-//             "[ {:#018X?} ] Type: {:?} Size: {:?}",
-//             entry.base..entry.base + entry.len,
-//             entry.typ,
-//             entry.len as usize
-//         )
-//     }
-//
-//     for i in 1..memmap.len() {
-//         let region = &memmap[i];
-//
-//         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-//         if region.typ == limine::MemoryMapEntryType::Framebuffer {
-//             crate::arch::set_mtrr(
-//                 region.base,
-//                 region.len,
-//                 crate::arch::MTRRMode::WriteCombining,
-//             );
-//         }
-//
-//         if !memory_section_is_usable(&memmap[i]) {
-//             memmap[null_index_ptr].len = memmap[i].len;
-//             memmap[null_index_ptr].base = memmap[i].base;
-//             memmap[null_index_ptr].typ = memmap[i].typ;
-//
-//             null_index_ptr += 1;
-//             continue;
-//         }
-//
-//         if null_index_ptr > 0 && memory_section_is_usable(&memmap[null_index_ptr - 1]) {
-//             memmap[null_index_ptr - 1].len += memmap[i].len;
-//
-//             continue;
-//         }
-//
-//         if memory_section_is_usable(&memmap[i - 1]) {
-//             memmap[i - 1].len += memmap[i].len;
-//
-//             memmap[null_index_ptr].len = memmap[i - 1].len;
-//             memmap[null_index_ptr].base = memmap[i - 1].base;
-//             memmap[null_index_ptr].typ = memmap[i - 1].typ;
-//
-//             null_index_ptr += 1;
-//             continue;
-//         }
-//     }
-//
-//     return &mut memmap[0..null_index_ptr];
-// }
-
 pub static PHYSICAL_MEMORY_MANAGER: Lazy<PhysicalMemoryManager> =
     Lazy::new(|| PhysicalMemoryManager::new());
 
@@ -213,35 +158,4 @@ impl LabelBytes for usize {
             };
         }
     }
-}
-
-pub fn test_page_frame_allocator(iterations: usize) {
-    crate::log_info!("Testing page allocator");
-
-    for i in 0..iterations {
-        let a = crate::mem::PHYSICAL_MEMORY_MANAGER.alloc(20);
-
-        let percent_complete = (i as f64 / iterations as f64) * 100.0;
-
-        crate::print!("[ ");
-        for j in 0..50 {
-            if (j * 2) < percent_complete as usize {
-                crate::print!("#");
-            } else {
-                crate::print!(".");
-            }
-        }
-        crate::print!(" ] {percent_complete:.1}%\r");
-
-        if a.is_err() {
-            crate::log_error!(
-                "Page frame allocator failed to allocate {iterations} pages on iteration {i}!"
-            );
-            break;
-        }
-
-        crate::mem::PHYSICAL_MEMORY_MANAGER.dealloc(a.unwrap(), 20);
-    }
-
-    crate::log_ok!("Page frame allocator successfully allocated {iterations} pages!");
 }

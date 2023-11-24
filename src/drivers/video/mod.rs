@@ -41,7 +41,7 @@ pub fn put_char(
     let font = font::G_8X16_FONT;
 
     if character as usize > u8::MAX as usize {
-        character = '?';
+        character = '\x00'; // rounded question mark
         fg = 0xFF0000;
     }
 

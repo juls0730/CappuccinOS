@@ -16,7 +16,7 @@ use core::ffi::CStr;
 use alloc::vec::Vec;
 use drivers::serial;
 use libs::util::hcf;
-use limine::{KernelFileRequest, ModuleRequest};
+use limine::KernelFileRequest;
 
 use crate::mem::LabelBytes;
 

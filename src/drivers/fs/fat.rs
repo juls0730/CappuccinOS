@@ -2,7 +2,7 @@ use alloc::{
     boxed::Box,
     string::{String, ToString},
     sync::Arc,
-    vec::{self, Vec},
+    vec::Vec,
 };
 
 use crate::drivers::storage::drive::{BlockDevice, GPTPartitionEntry};
@@ -23,6 +23,7 @@ use super::vfs::{VFSDirectory, VFSFile, VFSFileSystem};
 // End Of Chain
 const EOC: u32 = 0x0FFFFFF8;
 
+#[derive(Debug)]
 enum FatType {
     Fat12,
     Fat16,
@@ -154,6 +155,7 @@ pub struct FATFS<'a> {
     fat_start: u64,
     fat_type: FatType,
     cluster_size: usize,
+    sectors_per_fat: usize,
 }
 
 impl<'a> FATFS<'a> {
@@ -219,6 +221,7 @@ impl<'a> FATFS<'a> {
         } else {
             (bpb.total_sectors as u32, bpb.sectors_per_fat as u32)
         };
+
         let root_dir_sectors =
             ((bpb.root_directory_count * 32) + (bpb.bytes_per_sector - 1)) / bpb.bytes_per_sector;
         let total_data_sectors = total_sectors
@@ -236,6 +239,13 @@ impl<'a> FATFS<'a> {
             FatType::Fat32
         };
 
+        crate::println!("Found {fat_type:?} FS");
+
+        let sectors_per_fat = match fat_type {
+            FatType::Fat32 => bpb.sectors_per_fat_ext as usize,
+            _ => bpb.sectors_per_fat as usize,
+        };
+
         let cluster_size = bpb.sectors_per_cluster as usize * 512;
 
         return Ok(Self {
@@ -247,6 +257,7 @@ impl<'a> FATFS<'a> {
             fat_start,
             fat_type,
             cluster_size,
+            sectors_per_fat,
         });
     }
 
@@ -364,17 +375,17 @@ impl<'a> FATFS<'a> {
     }
 
     fn cluster_to_sector(&self, cluster: usize) -> usize {
-        let fat_size = self.bpb.sectors_per_fat_ext;
+        let fat_size = self.sectors_per_fat;
         let root_dir_sectors = ((self.bpb.root_directory_count * 32)
             + (self.bpb.bytes_per_sector - 1))
             / self.bpb.bytes_per_sector;
 
-        let first_data_sector = self.bpb.reserved_sectors as u32
-            + (self.bpb.fat_count as u32 * fat_size)
-            + root_dir_sectors as u32;
+        let first_data_sector = self.bpb.reserved_sectors as usize
+            + (self.bpb.fat_count as usize * fat_size)
+            + root_dir_sectors as usize;
 
         return ((cluster - 2) as isize * self.bpb.sectors_per_cluster as isize) as usize
-            + first_data_sector as usize;
+            + first_data_sector;
     }
 
     fn get_next_cluster(&self, cluster: usize) -> u32 {

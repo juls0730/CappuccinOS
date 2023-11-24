@@ -125,19 +125,8 @@ impl core::fmt::Display for PciDevice {
 pub static PCI_DEVICES: Mutex<Vec<PciDevice>> = Mutex::new(Vec::new());
 
 pub fn enumerate_pci_bus() {
-    let header_type = read_pci_header_type(0, 0, 0);
-    if (header_type & 0x80) == 0 {
-        // Single PCI host controller
-        check_bus(0);
-    } else {
-        // Multiple PCI host controllers
-        for function in 0..8 {
-            if read_pci_vendor_id(0, 0, function) != 0xFFFF {
-                break;
-            }
-            let bus = function;
-            check_bus(bus);
-        }
+    for bus in 0..=255 {
+        check_bus(bus);
     }
 
     crate::println!("====== PCI DEVICES ======");
@@ -153,7 +142,7 @@ fn check_bus(bus: u8) {
 }
 
 fn check_device(bus: u8, device: u8) {
-    let mut func: u8 = 0;
+    let func: u8 = 0;
 
     let vendor_id = read_pci_vendor_id(bus, device, func);
 
@@ -165,15 +154,12 @@ fn check_device(bus: u8, device: u8) {
     let header_type = read_pci_header_type(bus, device, func);
 
     if header_type & 0x80 != 0 {
-        // It's a multi-function device
-        func += 1;
+        for func in 1..8 {
+            let vendor_id = read_pci_vendor_id(bus, device, func);
 
-        while func < 8 {
-            if read_pci_vendor_id(bus, device, func) != 0xFFFF {
+            if vendor_id != 0xFFFF {
                 check_function(bus, device, func);
             }
-
-            func += 1;
         }
     }
 }
@@ -193,6 +179,7 @@ fn check_function(bus: u8, device: u8, func: u8) {
 
     if class_code == 0x06 && subclass_code == 0x04 {
         secondary_bus = read_pci_to_pci_secondary_bus(bus, device, func);
-        check_bus(secondary_bus);
+        // TODO: This causes an infinite loop on baremetal
+        // check_bus(secondary_bus);
     }
 }
