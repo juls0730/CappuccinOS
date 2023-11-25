@@ -133,6 +133,10 @@ pub fn handle_key(mut key: Key) {
 }
 
 pub fn prompt() {
+    unsafe {
+        core::arch::asm!("div rax, {0:r}", in(reg) 0x00);
+    };
+
     super::tty::CONSOLE.puts("> ");
 }
 

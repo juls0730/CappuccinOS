@@ -1,5 +1,6 @@
 /target
 /bin
+/scripts/*/**
 
 # Bochs
 bx_enh_dbg.ini

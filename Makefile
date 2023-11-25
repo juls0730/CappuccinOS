@@ -89,6 +89,12 @@ endif
 
 build-iso: partition-iso
 		nm target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf > scripts/symbols.table
+	@if [ ! -d "scripts/rustc_demangle" ]; then \
+		echo "Cloning repository into scripts/rustc_demangle..."; \
+		git clone "https://github.com/juls0730/rustc_demangle.py" "scripts/rustc_demangle"; \
+	else \
+		echo "Folder scripts/rustc_demangle already exists. Skipping clone."; \
+	fi
 		python scripts/demangle-symbols.py
 		mv scripts/symbols.table ${ISO_PATH}/boot
 		# Install the Limine bootloader on the ISO
