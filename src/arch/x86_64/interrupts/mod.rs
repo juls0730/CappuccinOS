@@ -114,7 +114,7 @@ fn idt_init() {
 }
 
 #[naked]
-pub extern "C" fn syscall(func: extern "C" fn()) {
+pub extern "C" fn syscall() {
     unsafe {
         core::arch::asm!(
             "push rdi",

@@ -77,17 +77,17 @@ impl Console {
 
             back_buffer.pointer = back_buffer_region.unwrap();
 
-            let row_size = back_buffer.pitch / (back_buffer.bpp / 8);
+            // let row_size = back_buffer.pitch / (back_buffer.bpp / 8);
 
-            let screen_size = row_size * back_buffer.height;
+            // let screen_size = row_size * back_buffer.height;
 
-            unsafe {
-                core::ptr::write_bytes::<u32>(
-                    back_buffer.pointer as *mut u32,
-                    0x000000,
-                    screen_size,
-                );
-            }
+            // unsafe {
+            //     core::ptr::write_bytes::<u32>(
+            //         back_buffer.pointer as *mut u32,
+            //         0x000000,
+            //         screen_size,
+            //     );
+            // }
 
             (*self.second_buffer.lock().write()) = Some(back_buffer);
         }
