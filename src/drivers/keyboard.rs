@@ -36,8 +36,6 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler() {
 
 #[derive(Debug)]
 pub enum KBDError {
-    TimeoutError,
-    ParityError,
     TestFailed,
 }
 
@@ -51,25 +49,7 @@ pub fn init() -> Result<(), KBDError> {
     outb(KBD_COMMAND_AND_STATUS_PORT, 0xA7);
     outb(KBD_COMMAND_AND_STATUS_PORT, 0xAD);
 
-    outb(KBD_COMMAND_AND_STATUS_PORT, 0xFF);
-    let status = inb(KBD_COMMAND_AND_STATUS_PORT);
-
-    if status & (1 << 6) != 0 {
-        return Err(KBDError::TimeoutError);
-    }
-
-    if status & (1 << 7) != 0 {
-        return Err(KBDError::ParityError);
-    }
-
-    // Test the controller
-    outb(KBD_COMMAND_AND_STATUS_PORT, 0xAA);
-    let result = inb(KBD_DATA_PORT);
-
-    if result != 0x55 {
-        crate::println!("Got result: {result}");
-        return Err(KBDError::TestFailed);
-    }
+    // TODO: Test the controller correctly
 
     idt_set_gate(
         InterruptIndex::Keyboard.as_u8(),

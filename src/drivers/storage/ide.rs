@@ -295,12 +295,10 @@ impl<'a> ATABus {
         self.wait_for_drive_ready()
             .map_err(|_| crate::log_error!("Error before issuing Identify command."))?;
 
-        for i in 0..(ATA_SECTOR_SIZE / size_of::<u16>()) {
+        for chunk in buffer.chunks_exact_mut(core::mem::size_of::<u16>()) {
             let word = inw(self.io_bar + ATADriveDataRegister::Data as u16);
 
-            unsafe {
-                *(buffer.as_mut_ptr() as *mut u16).add(i) = word;
-            };
+            chunk.copy_from_slice(&word.to_le_bytes());
         }
 
         return Ok(Arc::from(buffer));

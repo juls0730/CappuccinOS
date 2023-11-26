@@ -7,12 +7,8 @@ struct StackFrame {
     rip: u64,
 }
 
-pub fn print_stack_trace(max_frames: usize) {
-    let mut stackframe: *const StackFrame;
-
-    unsafe {
-        core::arch::asm!("mov {0:r}, rbp", out(reg) stackframe);
-    };
+pub fn print_stack_trace(max_frames: usize, rbp: u64) {
+    let mut stackframe = rbp as *const StackFrame;
 
     crate::println!("Stack Trace:");
     for _frame in 0..max_frames {

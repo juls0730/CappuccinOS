@@ -46,6 +46,11 @@ pub extern "C" fn _start() -> ! {
             .label_bytes()
     );
 
+    let asd: u32 = 0xdeadbeef;
+    unsafe {
+        *(asd as *mut u64) = 12;
+    };
+
     usr::shell::init_shell();
 
     hcf();

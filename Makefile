@@ -90,7 +90,7 @@ endif
 build-iso: partition-iso
 		nm target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf > scripts/symbols.table
 	@if [ ! -d "scripts/rustc_demangle" ]; then \
-		echo "Cloning repository into scripts/rustc_demangle..."; \
+		echo "Cloning rustc_demangle.py into scripts/rustc_demangle/..."; \
 		git clone "https://github.com/juls0730/rustc_demangle.py" "scripts/rustc_demangle"; \
 	else \
 		echo "Folder scripts/rustc_demangle already exists. Skipping clone."; \
@@ -106,6 +106,12 @@ build-iso: partition-iso
 		mcopy -i ${IMAGE_PATH}@@1M -s ${ISO_PATH}/* ::/
 
 compile-bootloader:
+	@if [ ! -d "limine" ]; then \
+		echo "Cloning Limine into limine/..."; \
+		git clone https://github.com/limine-bootloader/limine.git --branch=v5.x-branch-binary --depth=1; \
+	else \
+		echo "Folder limine already exists. Skipping clone."; \
+	fi
 		make -C limine
 
 compile-binaries:

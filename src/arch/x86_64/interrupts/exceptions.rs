@@ -2,8 +2,46 @@ use super::idt_set_gate;
 use crate::libs::util::hcf;
 use crate::{log_error, log_info};
 
-#[no_mangle]
-pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) -> ! {
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct Registers {
+    // Pushed by wrapper
+    int: usize,
+
+    // Pushed by push_gprs in crate::arch::x86_64
+    r15: usize,
+    r14: usize,
+    r13: usize,
+    r12: usize,
+    r11: usize,
+    r10: usize,
+    r9: usize,
+    r8: usize,
+    rbp: usize,
+    rdi: usize,
+    rsi: usize,
+    rdx: usize,
+    rcx: usize,
+    rbx: usize,
+    rax: usize,
+
+    // Pushed by interrupt
+    rip: usize,
+    cs: usize,
+    rflags: usize,
+    rsp: usize,
+    ss: usize,
+}
+
+extern "C" fn exception_handler(registers: u64) {
+    crate::println!("{:X?}", registers);
+
+    let registers = unsafe { *(registers as *const Registers) };
+
+    crate::println!("{:X?}", registers);
+
+    let int = registers.int;
+
     match int {
         0x00 => {
             log_error!("DIVISION ERROR!");
@@ -20,9 +58,6 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) ->
         0x0E => {
             log_error!("PAGE FAULT!");
         }
-        0x0F => {
-            log_error!("IDE");
-        }
         0xFF => {
             log_error!("EXCEPTION!");
         }
@@ -32,100 +67,52 @@ pub extern "C" fn exception_handler(int: u64, eip: u64, cs: u64, eflags: u64) ->
     }
 
     log_info!(
-        "INT: {:x} EIP: {:X}, CS: {:X}, EFLAGS: {:b}",
+        "INT: {:x} RIP: {:X}, CS: {:X}, EFLAGS: {:b}",
         int,
-        eip,
-        cs,
-        eflags
+        registers.rip,
+        registers.cs,
+        registers.rflags
     );
 
-    // unsafe {
-    //     core::arch::asm!("cli");
-    // };
-
-    crate::arch::stack_trace::print_stack_trace(6);
-
-    hcf();
+    crate::arch::stack_trace::print_stack_trace(6, registers.rbp as u64);
 }
 
-#[naked]
-pub extern "C" fn div_error() {
-    unsafe {
-        core::arch::asm!(
-            // WHY DOESN'T PUSH DO THIS CORRECTLY
-            "mov rdi, 0x00",
-            "call exception_handler",
-            "add esp, 4",
-            "iretq",
-            options(noreturn)
-        );
-    }
+// *macro intensifies*
+macro_rules! exception_function {
+    ($code:expr, $handler:ident, $recoverable:literal) => {
+        #[inline(always)]
+        extern "C" fn $handler() {
+            crate::arch::push_gprs();
+
+            unsafe {
+                core::arch::asm!(
+                    "push {0:r}",
+                    "mov rdi, rsp",
+                    "call {1}",
+                    "pop {0:r}",
+                    "mov rsp, rdi",
+                    in(reg) $code,
+                    sym exception_handler,
+                );
+            };
+
+            if $recoverable {
+                crate::println!("TODO: Recover gracefully ;~;");
+                hcf();
+            } else {
+                hcf();
+            }
+        }
+    };
 }
 
-#[naked]
-pub extern "C" fn invalid_opcode() {
-    unsafe {
-        core::arch::asm!(
-            "mov rdi, 0x06",
-            "call exception_handler",
-            "add esp, 4",
-            "iretq",
-            options(noreturn)
-        );
-    }
-}
-
-#[naked]
-pub extern "C" fn double_fault() {
-    unsafe {
-        core::arch::asm!(
-            "mov rdi, 0x08",
-            "call exception_handler",
-            "add esp, 4",
-            "iretq",
-            options(noreturn)
-        );
-    }
-}
-
-#[naked]
-pub extern "C" fn general_protection_fault() {
-    unsafe {
-        core::arch::asm!(
-            "mov rdi, 0x0D",
-            "call exception_handler",
-            "add esp, 4",
-            "iretq",
-            options(noreturn)
-        );
-    }
-}
-
-#[naked]
-pub extern "C" fn page_fault() {
-    unsafe {
-        core::arch::asm!(
-            "mov rdi, 0x0E",
-            "call exception_handler",
-            "add esp, 4",
-            "iretq",
-            options(noreturn)
-        );
-    }
-}
-
-#[naked]
-pub extern "C" fn generic_handler() {
-    unsafe {
-        core::arch::asm!(
-            "mov rdi, 0xFF",
-            "call exception_handler",
-            "add esp, 4",
-            "iretq",
-            options(noreturn)
-        );
-    }
-}
+exception_function!(0x00, div_error, true);
+exception_function!(0x06, invalid_opcode, true);
+exception_function!(0x08, double_fault, false);
+exception_function!(0x0D, general_protection_fault, true);
+// TODO: fix the page fault then gracefully return.
+exception_function!(0x0E, page_fault, false);
+exception_function!(0xFF, generic_handler, true);
 
 pub fn set_exceptions() {
     for i in 0..32 {
