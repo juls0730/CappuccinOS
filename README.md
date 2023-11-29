@@ -9,6 +9,7 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 - [X] Hardware interrupts
 - [X] PS/2 Keyboard support
 - [X] ANSI color codes in console
+- [X] Heap allocation
 - [ ] Externalized kernel modules
     - [ ] Initramfs
 - [ ] SMP
@@ -36,7 +37,6 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 - [ ] User authentication
 - [ ] Power management
 - [ ] Paging
-- [ ] Heap allocation
 - [ ] Hardware abstraction layer
 - [ ] RTC Clock
 
@@ -105,6 +105,7 @@ Inspiration was mainly from [JDH's Tetris OS](https://www.youtube.com/watch?v=Fa
 Some Resources I used over the creation of CappuccinOS:
 - [OSDev wiki](https://wiki.osdev.org)
 - Wikipedia on various random things
+- [Squashfs Binary Format](https://dr-emann.github.io/squashfs/squashfs.html)
 
 And mostly for examples of how people did stuff I used these (projects made by people who actually have a clue what they're doing).
 - [MOROS](https://github.com/vinc/moros)

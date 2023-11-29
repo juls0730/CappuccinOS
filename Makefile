@@ -46,6 +46,7 @@ copy-initramfs-files:
 		# Stub for now ;)
 		touch ${INITRAMFS_PATH}/example.txt
 		echo "Hello World from Initramfs" > ${INITRAMFS_PATH}/example.txt
+		echo "Second file for testing" > ${INITRAMFS_PATH}/example2.txt
 
 compile-initramfs: copy-initramfs-files
 		# Make squashfs without compression temporaily so I can get it working before I have to write a gzip driver

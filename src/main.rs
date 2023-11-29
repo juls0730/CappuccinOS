@@ -113,6 +113,11 @@ fn parse_kernel_cmdline() -> KernelFeatures {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     crate::log_error!("{}", info);
+    let rbp: u64;
+    unsafe {
+        core::arch::asm!("mov {0:r}, rbp", out(reg) rbp);
+    };
+    crate::arch::stack_trace::print_stack_trace(6, rbp);
 
     hcf();
 }

@@ -1,5 +1,10 @@
 pub mod compressors;
 
+use core::{
+    fmt::{self, write},
+    ops::{Index, Range},
+};
+
 use alloc::vec::Vec;
 use limine::ModuleRequest;
 
@@ -64,17 +69,18 @@ pub fn init() {
     squashfs.test();
 }
 
+#[repr(C)]
 #[derive(Debug)]
 struct Squashfs<'a> {
     ptr: *mut u8,
     superblock: SquashfsSuperblock,
     data_table: &'a [u8],
-    inode_table: &'a [u8],
-    directory_table: &'a [u8],
-    fragment_table: Option<&'a [u8]>,
-    export_table: Option<&'a [u8]>,
-    id_table: &'a [u8],
-    xattr_table: Option<&'a [u8]>,
+    inode_table: MetadataArray<'a>,
+    directory_table: MetadataArray<'a>,
+    fragment_table: Option<MetadataArray<'a>>,
+    export_table: Option<MetadataArray<'a>>,
+    id_table: MetadataArray<'a>,
+    xattr_table: Option<MetadataArray<'a>>,
 }
 
 impl Squashfs<'_> {
@@ -91,35 +97,41 @@ impl Squashfs<'_> {
         let data_table = &squashfs_data
             [core::mem::size_of::<SquashfsSuperblock>()..superblock.inode_table as usize];
 
-        let inode_table =
-            &squashfs_data[superblock.inode_table as usize..superblock.dir_table as usize];
+        let inode_table = MetadataArray::from(
+            &squashfs_data[superblock.inode_table as usize..superblock.dir_table as usize],
+        );
 
-        let directory_table =
-            &squashfs_data[superblock.dir_table as usize..superblock.frag_table as usize];
+        let directory_table = MetadataArray::from(
+            &squashfs_data[superblock.dir_table as usize..superblock.frag_table as usize],
+        );
 
-        let mut fragment_table: Option<&[u8]> = None;
+        let mut fragment_table: Option<MetadataArray> = None;
 
         if superblock.frag_table != u64::MAX {
-            fragment_table = Some(
+            fragment_table = Some(MetadataArray::from(
                 &squashfs_data[superblock.frag_table as usize..superblock.export_table as usize],
-            );
+            ));
         }
 
-        let mut export_table: Option<&[u8]> = None;
+        let mut export_table: Option<MetadataArray> = None;
 
         if superblock.export_table != u64::MAX {
-            export_table = Some(
+            export_table = Some(MetadataArray::from(
                 &squashfs_data[superblock.export_table as usize..superblock.id_table as usize],
-            );
+            ));
         }
 
-        let mut id_table: &[u8] = &squashfs_data[superblock.id_table as usize..];
-        let mut xattr_table: Option<&[u8]> = None;
+        let mut id_table: MetadataArray =
+            MetadataArray::from(&squashfs_data[superblock.id_table as usize..]);
+        let mut xattr_table: Option<MetadataArray> = None;
 
         if superblock.xattr_table != u64::MAX {
-            id_table =
-                &squashfs_data[superblock.id_table as usize..superblock.xattr_table as usize];
-            xattr_table = Some(&squashfs_data[superblock.xattr_table as usize..]);
+            id_table = MetadataArray::from(
+                &squashfs_data[superblock.id_table as usize..superblock.xattr_table as usize],
+            );
+            xattr_table = Some(MetadataArray::from(
+                &squashfs_data[superblock.xattr_table as usize..],
+            ));
         }
 
         return Ok(Squashfs {
@@ -138,7 +150,7 @@ impl Squashfs<'_> {
     // big function that does stuff hard coded-ly before I rip it all out
     pub fn test(&self) {
         // the bottom 15 bits, I think the last bit indicates whether the data is uncompressed
-        let inode_table_header = u16::from_le_bytes(self.inode_table[0..2].try_into().unwrap());
+        let inode_table_header = u16::from_le_bytes(*self.inode_table.get_header());
         let inode_is_compressed = inode_table_header & 0x80 != 0;
         let inode_table_size = inode_table_header & 0x7FFF;
 
@@ -146,98 +158,119 @@ impl Squashfs<'_> {
             panic!("Inode block is not less than 8KiB!");
         }
 
-        let mut buffer: Vec<u8> = Vec::with_capacity(8192);
+        let mut inode_table_buffer: Vec<u8> = Vec::with_capacity(8192);
 
         if inode_is_compressed {
             todo!("uncompress zlib data")
         } else {
             unsafe {
                 core::ptr::copy_nonoverlapping(
-                    self.inode_table.as_ptr().add(2),
-                    buffer.as_mut_ptr(),
+                    self.inode_table.as_ptr(),
+                    inode_table_buffer.as_mut_ptr(),
                     inode_table_size as usize,
                 );
 
-                buffer.set_len(inode_table_size as usize);
+                inode_table_buffer.set_len(inode_table_size as usize);
             }
         }
 
         let root_inode_block = self.superblock.root_inode_block as usize;
         let root_inode_offset = self.superblock.root_inode_offset as usize;
 
-        let root_inode_header = self.read_inode(root_inode_offset as u32);
-
-        let root_inode_header = InodeHeader {
-            file_type: u16::from_le_bytes(
-                buffer[root_inode_offset..root_inode_offset + 2]
-                    .try_into()
-                    .unwrap(),
-            )
-            .into(),
-            _reserved: [
-                u16::from_le_bytes(
-                    buffer[root_inode_offset + 2..root_inode_offset + 4]
-                        .try_into()
-                        .unwrap(),
-                ),
-                u16::from_le_bytes(
-                    buffer[root_inode_offset + 4..root_inode_offset + 6]
-                        .try_into()
-                        .unwrap(),
-                ),
-                u16::from_le_bytes(
-                    buffer[root_inode_offset + 6..root_inode_offset + 8]
-                        .try_into()
-                        .unwrap(),
-                ),
-            ],
-            mtime: u32::from_le_bytes(
-                buffer[root_inode_offset + 8..root_inode_offset + 12]
-                    .try_into()
-                    .unwrap(),
-            ),
-            inode_num: u32::from_le_bytes(
-                buffer[root_inode_offset + 12..root_inode_offset + 16]
-                    .try_into()
-                    .unwrap(),
-            ),
-        };
+        let root_inode_header = self
+            .read_inode(root_inode_offset as u32)
+            .expect("Failed to read root directory header!");
 
         crate::println!("{:X?}", root_inode_header);
 
-        let root_inode = DirectoryInode {
-            block_index: u32::from_le_bytes(
-                buffer[root_inode_offset + 16..root_inode_offset + 20]
-                    .try_into()
-                    .unwrap(),
-            ),
-            link_count: u32::from_le_bytes(
-                buffer[root_inode_offset + 20..root_inode_offset + 24]
-                    .try_into()
-                    .unwrap(),
-            ),
-            file_size: u16::from_le_bytes(
-                buffer[root_inode_offset + 24..root_inode_offset + 26]
-                    .try_into()
-                    .unwrap(),
-            ),
-            block_offset: u16::from_le_bytes(
-                buffer[root_inode_offset + 26..root_inode_offset + 28]
-                    .try_into()
-                    .unwrap(),
-            ),
-            parent_inode: u32::from_le_bytes(
-                buffer[root_inode_offset + 28..root_inode_offset + 32]
-                    .try_into()
-                    .unwrap(),
-            ),
-        };
+        let root_inode = DirectoryInode::from_bytes(&inode_table_buffer[root_inode_offset + 16..]);
 
-        crate::println!("{:?}", root_inode);
+        crate::println!("root_inode: {:X?}", root_inode);
+
+        let directory_table_header = u16::from_le_bytes(*self.directory_table.get_header());
+        let directory_is_compressed = directory_table_header & 0x80 != 0;
+        let directory_table_size = directory_table_header & 0x7FFF;
+
+        if directory_table_size >= 8192 {
+            panic!("Directory block is not less than 8KiB!");
+        }
+
+        let mut directory_table_buffer: Vec<u8> = Vec::with_capacity(8192);
+
+        if directory_is_compressed {
+            todo!("uncompress zlib data")
+        } else {
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    self.directory_table.as_ptr(),
+                    directory_table_buffer.as_mut_ptr(),
+                    directory_table_size as usize,
+                );
+
+                directory_table_buffer.set_len(directory_table_size as usize);
+            }
+        }
+
+        let root_directory = DirectoryTableHeader::from_bytes(
+            &directory_table_buffer[root_inode.block_offset as usize..],
+        );
+        crate::println!("{:?}", root_directory);
+
+        // TODO: cheap hack, fix it when I have more hours of sleep.
+        let mut offset =
+            root_inode.block_offset as usize + core::mem::size_of::<DirectoryTableHeader>();
+
+        for i in 0..root_directory.count as usize {
+            let root_dir_entry = DirectoryTableEntry::from_bytes(&directory_table_buffer[offset..]);
+
+            offset += 8 + root_dir_entry.name.len();
+
+            crate::println!("{:?}", root_dir_entry);
+
+            let file_inode_header = self
+                .read_inode(root_dir_entry.offset as u32)
+                .expect("Directory has files with missing inodes");
+
+            crate::println!("{:?}", file_inode_header);
+
+            let file_inode =
+                FileInode::from_bytes(&inode_table_buffer[root_dir_entry.offset as usize + 16..]);
+
+            crate::println!("{:?}", file_inode);
+
+            // TODO: get a real ceil function instead of this horse shit
+            // TODO: handle tail end packing (somehow?)
+            let block_count =
+                ((file_inode.file_size as f32 / self.superblock.block_size as f32) + 1.0) as usize;
+
+            // TODO: is this really how you're supposed to do this?
+            let mut block_data: Vec<u8> = Vec::with_capacity(8192 * block_count);
+
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    self.data_table
+                        .as_ptr()
+                        .add(file_inode.block_offset as usize),
+                    block_data.as_mut_ptr(),
+                    file_inode.file_size as usize,
+                );
+
+                block_data.set_len(file_inode.file_size as usize);
+            }
+
+            crate::println!("{:?}", block_count);
+
+            crate::println!(
+                "{:X?} \033[93m{:?}\033[0m",
+                block_data,
+                core::str::from_utf8(&block_data)
+            );
+        }
     }
 
+    // TODO: decompress stuff
     fn read_inode(&self, inode_num: u32) -> Option<InodeHeader> {
-        let inode_offset = inode_num as usize + 2;
+        let inode_offset = inode_num as usize;
 
         if inode_offset + core::mem::size_of::<InodeHeader>() > self.inode_table.len() {
             return None;
@@ -252,6 +285,7 @@ impl Squashfs<'_> {
     }
 }
 
+#[repr(C, packed)]
 #[derive(Debug)]
 struct InodeHeader {
     file_type: InodeFileType,
@@ -261,36 +295,123 @@ struct InodeHeader {
 }
 
 impl InodeHeader {
-    fn from_bytes(bytes: &[u8]) -> Option<InodeHeader> {
+    fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let file_type = u16::from_le_bytes(bytes[0..2].try_into().unwrap()).into();
         let mtime = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
         let inode_num = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
 
-        Some(InodeHeader {
+        return Some(Self {
             file_type,
             _reserved: [0; 3],
             mtime,
             inode_num,
-        })
+        });
     }
 }
 
+#[repr(C, packed)]
 #[derive(Debug)]
 struct DirectoryInode {
-    block_index: u32,
-    link_count: u32,
-    file_size: u16,
-    block_offset: u16,
-    parent_inode: u32,
+    block_index: u32,  // 4
+    link_count: u32,   // 8
+    file_size: u16,    // 10
+    block_offset: u16, // 12
+    parent_inode: u32, // 16
 }
 
+impl DirectoryInode {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let block_index = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        let link_count = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+        let file_size = u16::from_le_bytes(bytes[8..10].try_into().unwrap());
+        let block_offset = u16::from_le_bytes(bytes[10..12].try_into().unwrap());
+        let parent_inode = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
+
+        return Self {
+            block_index,
+            link_count,
+            file_size,
+            block_offset,
+            parent_inode,
+        };
+    }
+}
+
+#[repr(C, packed)]
 #[derive(Debug)]
 struct FileInode {
-    block_start: u32,
-    frag_idx: u32,
-    block_offset: u32,
-    file_size: u32,
-    block_size: [u32; 0],
+    block_start: u32,  // 4
+    frag_idx: u32,     // 8
+    block_offset: u32, // 12
+    file_size: u32,    // 16
+}
+
+impl FileInode {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let block_start = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        let frag_idx = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+        let block_offset = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
+        let file_size = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
+
+        return Self {
+            block_start,
+            frag_idx,
+            block_offset,
+            file_size,
+        };
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Debug)]
+struct DirectoryTableHeader {
+    count: u32,
+    start: u32,
+    inode_num: u32,
+}
+
+impl DirectoryTableHeader {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        // count is off by 2 entry
+        let count = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) + 1;
+        let start = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+        let inode_num = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
+
+        return Self {
+            count,
+            start,
+            inode_num,
+        };
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Debug)]
+struct DirectoryTableEntry<'a> {
+    offset: u16,
+    inode_offset: i16,
+    inode_type: InodeFileType,
+    name_size: u16,
+    name: &'a str, // the file name length is name_size + 1 bytes
+}
+
+impl<'a> DirectoryTableEntry<'a> {
+    fn from_bytes(bytes: &'a [u8]) -> Self {
+        let offset = u16::from_le_bytes(bytes[0..2].try_into().unwrap());
+        let inode_offset = i16::from_le_bytes(bytes[2..4].try_into().unwrap());
+        let inode_type = u16::from_le_bytes(bytes[4..6].try_into().unwrap()).into();
+        let name_size = u16::from_le_bytes(bytes[6..8].try_into().unwrap());
+        let name = core::str::from_utf8(&bytes[8..((name_size as usize) + 1) + 8])
+            .expect("Failed to make DirectoryHeader name");
+
+        return Self {
+            offset,
+            inode_offset,
+            inode_type,
+            name_size,
+            name,
+        };
+    }
 }
 
 #[repr(u16)]
@@ -389,7 +510,7 @@ impl Into<SquashfsCompressionType> for u16 {
     }
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
 struct SquashfsSuperblock {
     magic: u32,                          // 0x73717368
@@ -504,5 +625,66 @@ impl SquashfsSuperblock {
             compressor_options_present,
             uncompressed_id_table,
         };
+    }
+}
+
+// Helper functions to deal with metadata arrays
+struct MetadataArray<'a> {
+    header: &'a [u8; 2],
+    data: &'a [u8],
+}
+
+impl<'a> MetadataArray<'a> {
+    // Function to access the header
+    pub fn get_header(&self) -> &'a [u8; 2] {
+        &self.header
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        return self.data.as_ptr();
+    }
+
+    pub fn len(&self) -> usize {
+        return self.data.len();
+    }
+}
+
+impl<'a> From<&'a [u8]> for MetadataArray<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        let (header, data) = value.split_at(2);
+        MetadataArray {
+            header: header.try_into().unwrap(),
+            data,
+        }
+    }
+}
+
+impl<'a> Index<usize> for MetadataArray<'a> {
+    type Output = u8;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        if index > self.data.len() {
+            panic!("Index out of bounds");
+        }
+
+        return &self.data[index];
+    }
+}
+
+impl<'a> Index<Range<usize>> for MetadataArray<'a> {
+    type Output = [u8];
+
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        if index.end > self.data.len() || index.start > self.data.len() {
+            panic!("Index out of bounds");
+        }
+
+        return &self.data[index];
+    }
+}
+
+impl<'a> fmt::Debug for MetadataArray<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.data)
     }
 }
