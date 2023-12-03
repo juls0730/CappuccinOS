@@ -5,6 +5,7 @@ MODE ?= release
 ARCH ?= x86_64
 MEMORY ?= 512M
 QEMU_OPTS ?= 
+MKSQUASHFS_OPTS ?= -no-compression
 
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
@@ -44,13 +45,14 @@ prepare-bin-files:
 
 copy-initramfs-files:
 		# Stub for now ;)
-		touch ${INITRAMFS_PATH}/example.txt
 		echo "Hello World from Initramfs" > ${INITRAMFS_PATH}/example.txt
 		echo "Second file for testing" > ${INITRAMFS_PATH}/example2.txt
+		mkdir -p ${INITRAMFS_PATH}/firstdir/seconddirbutlonger/
+		echo "Hell yeah, we getting a working initramfs using a custom squashfs driver!!" > ${INITRAMFS_PATH}/firstdir/seconddirbutlonger/yeah.txt
 
 compile-initramfs: copy-initramfs-files
 		# Make squashfs without compression temporaily so I can get it working before I have to write a gzip driver
-		mksquashfs ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.img -no-compression
+		mksquashfs ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.img ${MKSQUASHFS_OPTS}
 
 copy-iso-files:
 		# Limine files

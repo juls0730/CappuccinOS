@@ -53,7 +53,7 @@ Before building CappuccinOS, make sure you have the following installed on your 
 
 Clone the repo:
 ```BASH
-git clone --recurse-submodules https://github.com/juls0730/CappuccinOS.git
+git clone https://github.com/juls0730/CappuccinOS.git
 cd CappuccinOS
 ```
 
@@ -107,7 +107,7 @@ Some Resources I used over the creation of CappuccinOS:
 - Wikipedia on various random things
 - [Squashfs Binary Format](https://dr-emann.github.io/squashfs/squashfs.html)
 
-And mostly for examples of how people did stuff I used these (projects made by people who actually have a clue what they're doing).
+And mostly for examples of how people did stuff I used these (projects made by people who actually have a clue what they're doing):
 - [MOROS](https://github.com/vinc/moros)
 - [Felix](https://github.com/mrgian/felix)
 - [mOS](https://github.com/Moldytzu/mOS)

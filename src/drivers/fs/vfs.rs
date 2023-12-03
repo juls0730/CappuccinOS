@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
 use crate::libs::mutex::Mutex;
 
@@ -8,11 +8,11 @@ pub trait VFSFileSystem {
 }
 
 pub trait VFSFile {
-    fn read(&self) -> Result<Vec<u8>, ()>;
+    fn read(&self) -> Result<Arc<[u8]>, ()>;
 }
 
 pub trait VFSDirectory {
-    fn list_files(&self) -> Result<Vec<Box<dyn VFSFile>>, ()>;
+    fn list_files(&self) -> Result<Arc<[Box<dyn VFSFile>]>, ()>;
 }
 
 pub static VFS_INSTANCES: Mutex<Vec<VFS>> = Mutex::new(Vec::new());

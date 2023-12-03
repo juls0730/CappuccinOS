@@ -466,7 +466,7 @@ struct FatFile<'a> {
 }
 
 impl<'a> VFSFile for FatFile<'a> {
-    fn read(&self) -> Result<Vec<u8>, ()> {
+    fn read(&self) -> Result<Arc<[u8]>, ()> {
         let mut file: Vec<u8> = Vec::with_capacity(self.file_entry.file_size as usize);
         let mut file_ptr_index = 0;
 
@@ -507,7 +507,7 @@ impl<'a> VFSFile for FatFile<'a> {
             }
         }
 
-        return Ok(file);
+        return Ok(Arc::from(file));
     }
 }
 
@@ -517,7 +517,7 @@ struct FatDirectory<'a> {
 }
 
 impl<'a> VFSDirectory for FatDirectory<'a> {
-    fn list_files(&self) -> Result<Vec<Box<dyn VFSFile>>, ()> {
+    fn list_files(&self) -> Result<Arc<[Box<dyn VFSFile>]>, ()> {
         unimplemented!();
     }
 }
