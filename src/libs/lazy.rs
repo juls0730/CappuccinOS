@@ -14,7 +14,7 @@ impl<T, F: Fn() -> T> Lazy<T, F> {
     pub const fn new(init_func: F) -> Self {
         Lazy {
             value: UnsafeCell::new(None),
-            init_func: init_func,
+            init_func,
             initialized: AtomicBool::new(false),
         }
     }

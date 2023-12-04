@@ -3,7 +3,7 @@ pub unsafe fn memset32(dst: *mut u32, val: u32, count: usize) {
     if cfg!(not(any(target_arch = "x86", target_arch = "x86_64"))) {
         let mut buf = dst;
         unsafe {
-            while buf < dst.offset(count as isize) {
+            while buf < dst.add(count) {
                 core::ptr::write_volatile(buf, val);
                 buf = buf.offset(1);
             }

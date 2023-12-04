@@ -4,7 +4,7 @@ use limine::RsdpRequest;
 static RSDP_REQUEST: RsdpRequest = RsdpRequest::new(0);
 
 #[repr(C, packed)]
-struct RSDP {
+struct Rsdp {
     signature: [u8; 8],
     checksum: u8,
     oem_id: [u8; 6],
@@ -19,10 +19,10 @@ struct RSDP {
 }
 
 const RSDP_V1_LENGTH: usize = 20;
-const RSDP_V2_EXT_LENGTH: usize = core::mem::size_of::<RSDP>() - RSDP_V1_LENGTH;
+const RSDP_V2_EXT_LENGTH: usize = core::mem::size_of::<Rsdp>() - RSDP_V1_LENGTH;
 const RSDP_SIG: [u8; 8] = *b"RSD PTR ";
 
-impl RSDP {
+impl Rsdp {
     pub fn is_valid(&self) -> bool {
         if self.signature != RSDP_SIG {
             return false;
@@ -39,7 +39,7 @@ impl RSDP {
         };
 
         let bytes =
-            unsafe { core::slice::from_raw_parts(self as *const RSDP as *const u8, length) };
+            unsafe { core::slice::from_raw_parts(self as *const Rsdp as *const u8, length) };
         let sum = bytes.iter().fold(0u8, |sum, &byte| sum.wrapping_add(byte));
 
         if sum != 0 {
@@ -60,7 +60,7 @@ pub fn init_acpi() {
 
     let rsdp_address = &rsdp_response.unwrap().address;
 
-    let rsdp_table: &RSDP = unsafe { &*(rsdp_address.as_ptr().unwrap() as *const RSDP) };
+    let rsdp_table: &Rsdp = unsafe { &*(rsdp_address.as_ptr().unwrap() as *const Rsdp) };
 
     if !rsdp_table.is_valid() {
         log_error!("Failed to initialize ACPI: RSDP was not valid!");
@@ -68,7 +68,7 @@ pub fn init_acpi() {
     }
 
     log_info!("{}", rsdp_table.revision);
-    let mut facp: Option<&ACPISDTHeader> = None;
+    let mut facp: Option<&AcpiSdtHeader> = None;
 
     let rsdt_address = rsdp_table.rsdt_address;
     facp = find_facp(rsdt_address as *const u32, rsdp_table.revision);
@@ -80,7 +80,7 @@ pub fn init_acpi() {
 }
 
 #[repr(C)]
-struct ACPISDTHeader {
+struct AcpiSdtHeader {
     signature: [u8; 4],
     length: u32,
     revision: u8,
@@ -92,7 +92,7 @@ struct ACPISDTHeader {
     creator_revision: u32,
 }
 
-fn check_rsdt_checksum(table_header: *const ACPISDTHeader) -> bool {
+fn check_rsdt_checksum(table_header: *const AcpiSdtHeader) -> bool {
     let mut sum: u8 = 0;
 
     for i in 0..unsafe { (*table_header).length } {
@@ -103,23 +103,23 @@ fn check_rsdt_checksum(table_header: *const ACPISDTHeader) -> bool {
 }
 
 #[repr(C)]
-struct RSDT {
-    h: ACPISDTHeader,
+struct Rsdt {
+    h: AcpiSdtHeader,
     pointer_to_other_sdt: *const u32,
 }
 
-fn find_facp(root_sdt: *const u32, revision: u8) -> Option<&'static ACPISDTHeader> {
-    let rsdt: &mut RSDT = unsafe { &mut *(root_sdt as *mut RSDT) };
+fn find_facp(root_sdt: *const u32, revision: u8) -> Option<&'static AcpiSdtHeader> {
+    let rsdt: &mut Rsdt = unsafe { &mut *(root_sdt as *mut Rsdt) };
     rsdt.pointer_to_other_sdt =
-        [(rsdt.h.length - core::mem::size_of::<ACPISDTHeader>() as u32) / 4].as_ptr();
+        [(rsdt.h.length - core::mem::size_of::<AcpiSdtHeader>() as u32) / 4].as_ptr();
 
     let entry_bytes = if revision > 0 { 8 } else { 4 };
 
-    let entries = (rsdt.h.length - core::mem::size_of::<ACPISDTHeader>() as u32) / entry_bytes;
+    let entries = (rsdt.h.length - core::mem::size_of::<AcpiSdtHeader>() as u32) / entry_bytes;
 
     for i in 0..entries {
         crate::println!("{i}");
-        let h = unsafe { rsdt.pointer_to_other_sdt.add(i as usize) as *const ACPISDTHeader };
+        let h = unsafe { rsdt.pointer_to_other_sdt.add(i as usize) as *const AcpiSdtHeader };
         let signature_bytes = unsafe { (*h).signature };
         let signature_str = core::str::from_utf8(&signature_bytes).unwrap_or("");
 

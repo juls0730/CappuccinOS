@@ -20,16 +20,16 @@ pub static POISONED: AtomicBool = AtomicBool::new(false);
 pub fn init_serial() -> u8 {
     outb(PORT + 1, 0x00);
     outb(PORT + 3, 0x80);
-    outb(PORT + 0, 0x03);
+    outb(PORT, 0x03);
     outb(PORT + 1, 0x00);
     outb(PORT + 3, 0x03);
     outb(PORT + 2, 0xC7);
     outb(PORT + 4, 0x0B);
     outb(PORT + 4, 0x1E);
-    outb(PORT + 0, 0xAE);
+    outb(PORT, 0xAE);
 
     // Check if serial is faulty
-    if inb(PORT + 0) != 0xAE {
+    if inb(PORT) != 0xAE {
         crate::log_error!("Serial Driver failed to initialize");
         POISONED.store(true, core::sync::atomic::Ordering::Relaxed);
         return 1;

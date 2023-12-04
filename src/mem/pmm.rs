@@ -28,15 +28,12 @@ impl PhysicalMemoryManager {
         let mut highest_addr: usize = 0;
 
         for entry in super::MEMMAP.lock().read().iter() {
-            match entry.typ {
-                limine::MemoryMapEntryType::Usable => {
-                    pmm.usable_pages
-                        .fetch_add(entry.len as usize / PAGE_SIZE, Ordering::SeqCst);
-                    if highest_addr < (entry.base + entry.len) as usize {
-                        highest_addr = (entry.base + entry.len) as usize;
-                    }
+            if entry.typ == limine::MemoryMapEntryType::Usable {
+                pmm.usable_pages
+                    .fetch_add(entry.len as usize / PAGE_SIZE, Ordering::SeqCst);
+                if highest_addr < (entry.base + entry.len) as usize {
+                    highest_addr = (entry.base + entry.len) as usize;
                 }
-                _ => {}
             }
         }
 
@@ -83,7 +80,7 @@ impl PhysicalMemoryManager {
         let mut p: usize = 0;
 
         while self.last_used_page_idx.load(Ordering::SeqCst) < limit {
-            if self.bitmap_test(self.last_used_page_idx.fetch_add(1, Ordering::SeqCst)) == true {
+            if self.bitmap_test(self.last_used_page_idx.fetch_add(1, Ordering::SeqCst)) {
                 p = 0;
                 continue;
             }

@@ -60,7 +60,7 @@ impl ModStatusBits {
         let status = self.status.load(Ordering::SeqCst);
 
         return ModStatus {
-            win: ((status >> 0) & 1) != 0,
+            win: (status & 1) != 0,
             ctrl: ((status >> 1) & 1) != 0,
             alt: ((status >> 2) & 1) != 0,
             shift: ((status >> 3) & 1) != 0,

@@ -18,12 +18,8 @@ pub fn fill_screen(color: u32, mirror_buffer: Option<Framebuffer>) {
     let buffer_size = (framebuffer.pitch / (framebuffer.bpp / 8)) * framebuffer.height;
 
     unsafe {
-        if mirror_buffer.is_some() {
-            crate::libs::util::memset32(
-                mirror_buffer.unwrap().pointer as *mut u32,
-                color,
-                buffer_size,
-            );
+        if let Some(mirror_buffer) = mirror_buffer {
+            crate::libs::util::memset32(mirror_buffer.pointer as *mut u32, color, buffer_size);
         }
 
         crate::libs::util::memset32(framebuffer_ptr as *mut u32, color, buffer_size);
@@ -55,8 +51,8 @@ pub fn put_char(
 
     for (row_idx, &character_byte) in character_array.iter().enumerate() {
         let mut byte = [bg; 8];
-        for bit in 0..8 {
-            byte[bit] = [bg, fg][((character_byte >> (7 - bit)) & 0b00000001) as usize]
+        for (i, bit) in byte.iter_mut().enumerate() {
+            *bit = [bg, fg][((character_byte >> (7 - i)) & 0b00000001) as usize]
         }
 
         let row_start_offset = (start_y as usize + row_idx) * framebuffer.pitch
@@ -198,14 +194,8 @@ pub fn get_framebuffer() -> Option<Framebuffer> {
 
     let framebuffer_response = crate::drivers::video::FRAMEBUFFER_REQUEST
         .get_response()
-        .get();
+        .get()?;
 
-    if framebuffer_response.is_none() {
-        return None;
-    }
-
-    // eww, variable redeclaration
-    let framebuffer_response = framebuffer_response.unwrap();
     if framebuffer_response.framebuffer_count < 1 {
         return None;
     }
@@ -215,7 +205,7 @@ pub fn get_framebuffer() -> Option<Framebuffer> {
     let framebuffer = Framebuffer::new(
         framebuffer_response.bpp as usize,
         framebuffer_response.pitch as usize,
-        framebuffer_response.address.as_ptr().unwrap() as *mut u8,
+        framebuffer_response.address.as_ptr().unwrap(),
         framebuffer_response.width as usize,
         framebuffer_response.height as usize,
     );

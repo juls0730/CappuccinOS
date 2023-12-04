@@ -34,7 +34,7 @@ pub static HHDM_OFFSET: Lazy<usize> = Lazy::new(|| {
 });
 
 pub static PHYSICAL_MEMORY_MANAGER: Lazy<PhysicalMemoryManager> =
-    Lazy::new(|| PhysicalMemoryManager::new());
+    Lazy::new(PhysicalMemoryManager::new);
 
 pub struct Allocator {
     pub inner: Lazy<BuddyAllocator>,
@@ -134,7 +134,7 @@ pub trait LabelBytes {
 
 impl LabelBytes for usize {
     fn label_bytes(&self) -> Label {
-        let bytes = self.clone();
+        let bytes = *self;
 
         if bytes >> 30 > 0 {
             return Label {

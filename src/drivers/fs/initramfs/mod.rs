@@ -1,16 +1,13 @@
 pub mod compressors;
 
-use core::{
-    fmt::{self, Debug},
-    ops::{Index, Range, RangeFrom, RangeFull},
-};
+use core::fmt::{self, Debug};
 
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use limine::ModuleRequest;
 
 use crate::libs::math::ceil;
 
-use super::vfs::{VFSDirectory, VFSFile, VFSFileSystem};
+use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
 
 pub static MODULE_REQUEST: ModuleRequest = ModuleRequest::new(0);
 
@@ -98,7 +95,7 @@ impl Squashfs<'_> {
 
         let squashfs_data: &[u8] = unsafe { core::slice::from_raw_parts(ptr, length) };
 
-        let superblock = SquashfsSuperblock::new(&squashfs_data)?;
+        let superblock = SquashfsSuperblock::new(squashfs_data)?;
 
         let data_table = &squashfs_data
             [core::mem::size_of::<SquashfsSuperblock>()..superblock.inode_table as usize];
@@ -158,7 +155,7 @@ impl Squashfs<'_> {
     }
 
     fn read_inode(&self, inode_num: u32) -> Inode {
-        let inode_table = &self.get_decompressed_table(&self.inode_table, (true, None));
+        let inode_table = &self.get_decompressed_table(self.inode_table, (true, None));
 
         let inode_offset = inode_num as usize;
 
@@ -211,14 +208,10 @@ impl Squashfs<'_> {
         let mut buffer: Vec<u8> = Vec::with_capacity(8192);
 
         if table_is_compressed {
-            let bytes = if metadata_block.0 {
-                &table[2..]
-            } else {
-                &table
-            };
+            let bytes = if metadata_block.0 { &table[2..] } else { table };
 
             match self.superblock.compressor {
-                SquashfsCompressionType::GZIP => {
+                SquashfsCompressionType::Gzip => {
                     buffer.extend_from_slice(compressors::gzip::uncompress_data(bytes));
                 }
                 _ => {
@@ -241,8 +234,8 @@ impl Squashfs<'_> {
     }
 }
 
-impl<'a> VFSFileSystem for Squashfs<'a> {
-    fn open(&self, path: &str) -> Result<Box<dyn VFSFile + '_>, ()> {
+impl<'a> VfsFileSystem for Squashfs<'a> {
+    fn open(&self, path: &str) -> Result<Box<dyn VfsFile + '_>, ()> {
         let path_components: Vec<&str> = path.trim_start_matches('/').split('/').collect();
         let mut current_dir = self.read_root_dir();
 
@@ -273,7 +266,7 @@ impl<'a> VFSFileSystem for Squashfs<'a> {
         return Err(());
     }
 
-    fn read_dir(&self, path: &str) -> Result<Box<dyn VFSDirectory>, ()> {
+    fn read_dir(&self, path: &str) -> Result<Box<dyn VfsDirectory>, ()> {
         unimplemented!()
     }
 }
@@ -486,7 +479,7 @@ impl<'a> BasicFileInode<'a> {
     }
 }
 
-impl<'a> VFSFile for BasicFileInode<'a> {
+impl<'a> VfsFile for BasicFileInode<'a> {
     fn read(&self) -> Result<Arc<[u8]>, ()> {
         // TODO: handle tail end packing (somehow?)
         let block_count =
@@ -584,23 +577,23 @@ enum InodeFileType {
     ExtendedSocked = 13,
 }
 
-impl Into<InodeFileType> for u16 {
-    fn into(self) -> InodeFileType {
-        match self {
-            1 => InodeFileType::BasicDirectory,
-            2 => InodeFileType::BasicFile,
-            3 => InodeFileType::BasicSymlink,
-            4 => InodeFileType::BasicBlockDevice,
-            5 => InodeFileType::BasicCharDevice,
-            6 => InodeFileType::BasicPipe,
-            7 => InodeFileType::BasicSocked,
-            8 => InodeFileType::ExtendedDirectory,
-            9 => InodeFileType::ExtendedFile,
-            10 => InodeFileType::ExtendedSymlink,
-            11 => InodeFileType::ExtendedBlockDevice,
-            12 => InodeFileType::ExtendedPipe,
-            13 => InodeFileType::ExtendedSocked,
-            _ => panic!("Unexpected Inode file type {self}!"),
+impl From<u16> for InodeFileType {
+    fn from(value: u16) -> Self {
+        match value {
+            1 => Self::BasicDirectory,
+            2 => Self::BasicFile,
+            3 => Self::BasicSymlink,
+            4 => Self::BasicBlockDevice,
+            5 => Self::BasicCharDevice,
+            6 => Self::BasicPipe,
+            7 => Self::BasicSocked,
+            8 => Self::ExtendedDirectory,
+            9 => Self::ExtendedFile,
+            10 => Self::ExtendedSymlink,
+            11 => Self::ExtendedBlockDevice,
+            12 => Self::ExtendedPipe,
+            13 => Self::ExtendedSocked,
+            _ => panic!("Unexpected Inode file type {value}!"),
         }
     }
 }
@@ -608,12 +601,12 @@ impl Into<InodeFileType> for u16 {
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SquashfsCompressionType {
-    GZIP = 1,
-    LZMA = 2,
-    LZO = 3,
-    XZ = 4,
-    LZ4 = 5,
-    ZSTD = 6,
+    Gzip = 1,
+    Lzma = 2,
+    Lzo = 3,
+    Xz = 4,
+    Lz4 = 5,
+    Zstd = 6,
 }
 
 #[repr(u16)]
@@ -632,6 +625,7 @@ enum SquashfsFlags {
     UncompressedIDTable = 0x0800,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct SquashfsFeatures {
     uncompressed_inodes: bool,
@@ -648,15 +642,15 @@ struct SquashfsFeatures {
     uncompressed_id_table: bool,
 }
 
-impl Into<SquashfsCompressionType> for u16 {
-    fn into(self) -> SquashfsCompressionType {
-        match self {
-            1 => SquashfsCompressionType::GZIP,
-            2 => SquashfsCompressionType::LZMA,
-            3 => SquashfsCompressionType::LZO,
-            4 => SquashfsCompressionType::XZ,
-            5 => SquashfsCompressionType::LZ4,
-            6 => SquashfsCompressionType::ZSTD,
+impl From<u16> for SquashfsCompressionType {
+    fn from(value: u16) -> Self {
+        match value {
+            1 => Self::Gzip,
+            2 => Self::Lzma,
+            3 => Self::Lzo,
+            4 => Self::Xz,
+            5 => Self::Lz4,
+            6 => Self::Zstd,
             _ => panic!("Unexpected Squashfs compression type!"),
         }
     }

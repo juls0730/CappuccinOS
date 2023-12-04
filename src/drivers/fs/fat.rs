@@ -7,7 +7,7 @@ use alloc::{
 
 use crate::drivers::storage::drive::{BlockDevice, GPTPartitionEntry};
 
-use super::vfs::{VFSDirectory, VFSFile, VFSFileSystem};
+use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
 
 // The first Cluster (perhaps 0xF0FFFF0F) is the FAT ID
 // The second cluster stores the end-of-cluster-chain marker
@@ -144,9 +144,9 @@ pub struct FileEntry {
     file_size: u32,
 }
 
-pub struct FATFS<'a> {
+pub struct FatFs<'a> {
     // Block device Info
-    drive: Box<&'a dyn BlockDevice>,
+    drive: &'a dyn BlockDevice,
     partition: GPTPartitionEntry,
     // FAT info
     fs_info: FSInfo,
@@ -158,7 +158,7 @@ pub struct FATFS<'a> {
     sectors_per_fat: usize,
 }
 
-impl<'a> FATFS<'a> {
+impl<'a> FatFs<'a> {
     pub fn new(drive: &'a dyn BlockDevice, partition: GPTPartitionEntry) -> Result<Self, ()> {
         let bpb_bytes = drive
             .read(partition.start_sector, 1)
@@ -173,7 +173,7 @@ impl<'a> FATFS<'a> {
         }
 
         // We're trusting it
-        if let Some(system_identifier_string) = system_identifier.ok() {
+        if let Ok(system_identifier_string) = system_identifier {
             if !system_identifier_string.contains("FAT32") {
                 return Err(());
             }
@@ -249,7 +249,7 @@ impl<'a> FATFS<'a> {
         let cluster_size = bpb.sectors_per_cluster as usize * 512;
 
         return Ok(Self {
-            drive: Box::new(drive),
+            drive,
             partition,
             fs_info,
             fat,
@@ -336,19 +336,17 @@ impl<'a> FATFS<'a> {
                 }
             }
 
-            if name.replacen(".", "", 1).len() <= 11 {
-                let search_parts: Vec<&str> = name.split(".").collect();
+            if name.replacen('.', "", 1).len() <= 11 {
+                let search_parts: Vec<&str> = name.split('.').collect();
 
                 let filename = core::str::from_utf8(&file_entry.file_name).unwrap();
                 let extension = core::str::from_utf8(&file_entry.extension).unwrap();
 
-                if search_parts.len() == 1
-                    && !filename.contains(&search_parts[0].to_ascii_uppercase())
-                {
-                    continue;
-                } else if search_parts.len() > 1
-                    && (!filename.contains(&search_parts[0].to_ascii_uppercase())
-                        || !extension.contains(&search_parts[1].to_ascii_uppercase()))
+                if (search_parts.len() == 1
+                    && !filename.contains(&search_parts[0].to_ascii_uppercase()))
+                    || (search_parts.len() > 1
+                        && (!filename.contains(&search_parts[0].to_ascii_uppercase())
+                            || !extension.contains(&search_parts[1].to_ascii_uppercase())))
                 {
                     continue;
                 }
@@ -432,8 +430,8 @@ impl<'a> FATFS<'a> {
     }
 }
 
-impl<'a> VFSFileSystem for FATFS<'a> {
-    fn open(&self, path: &str) -> Result<Box<dyn VFSFile + '_>, ()> {
+impl<'a> VfsFileSystem for FatFs<'a> {
+    fn open(&self, path: &str) -> Result<Box<dyn VfsFile + '_>, ()> {
         let path_componenets: Vec<&str> = path.trim_start_matches('/').split('/').collect();
         let mut current_cluster = self.bpb.root_dir_cluster as usize;
 
@@ -446,7 +444,7 @@ impl<'a> VFSFileSystem for FATFS<'a> {
                     as usize;
             } else {
                 return Ok(Box::new(FatFile {
-                    fat_fs: &self,
+                    fat_fs: self,
                     file_entry,
                 }));
             }
@@ -455,17 +453,17 @@ impl<'a> VFSFileSystem for FATFS<'a> {
         return Err(());
     }
 
-    fn read_dir(&self, path: &str) -> Result<Box<dyn VFSDirectory>, ()> {
+    fn read_dir(&self, path: &str) -> Result<Box<dyn VfsDirectory>, ()> {
         unimplemented!();
     }
 }
 
 struct FatFile<'a> {
-    fat_fs: &'a FATFS<'a>,
+    fat_fs: &'a FatFs<'a>,
     file_entry: FileEntry,
 }
 
-impl<'a> VFSFile for FatFile<'a> {
+impl<'a> VfsFile for FatFile<'a> {
     fn read(&self) -> Result<Arc<[u8]>, ()> {
         let mut file: Vec<u8> = Vec::with_capacity(self.file_entry.file_size as usize);
         let mut file_ptr_index = 0;
@@ -512,12 +510,12 @@ impl<'a> VFSFile for FatFile<'a> {
 }
 
 struct FatDirectory<'a> {
-    fat_fs: &'a FATFS<'a>,
+    fat_fs: &'a FatFs<'a>,
     directory_cluster: usize,
 }
 
-impl<'a> VFSDirectory for FatDirectory<'a> {
-    fn list_files(&self) -> Result<Arc<[Box<dyn VFSFile>]>, ()> {
+impl<'a> VfsDirectory for FatDirectory<'a> {
+    fn list_files(&self) -> Result<Arc<[Box<dyn VfsFile>]>, ()> {
         unimplemented!();
     }
 }

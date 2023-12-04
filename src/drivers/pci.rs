@@ -170,15 +170,13 @@ fn check_function(bus: u8, device: u8, func: u8) {
         .write()
         .push(PciDevice::new(bus, device, func));
 
-    let class_code: u8;
-    let subclass_code: u8;
-    let secondary_bus: u8;
+    let _secondary_bus: u8;
 
-    class_code = read_pci_class_code(bus, device, func);
-    subclass_code = read_pci_subclass_code(bus, device, func);
+    let class_code = read_pci_class_code(bus, device, func);
+    let subclass_code = read_pci_subclass_code(bus, device, func);
 
     if class_code == 0x06 && subclass_code == 0x04 {
-        secondary_bus = read_pci_to_pci_secondary_bus(bus, device, func);
+        _secondary_bus = read_pci_to_pci_secondary_bus(bus, device, func);
         // TODO: This causes an infinite loop on baremetal
         // check_bus(secondary_bus);
     }

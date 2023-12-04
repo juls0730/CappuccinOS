@@ -71,6 +71,23 @@ pub unsafe fn insw(port: u16, buffer: *mut u16, count: usize) {
     }
 }
 
+/// Outputs `count` 16-bit values from the specified `port` into the `buffer`.
+///
+/// # Safety
+///
+/// This function panics if the supplied buffer's size is smaller than `count`.
+#[inline(always)]
+pub unsafe fn outsw(port: u16, buffer: *mut u16, count: usize) {
+    unsafe {
+        asm!("cld",
+            "rep outsw",
+            in("dx") port,
+            inout("rdi") buffer => _,
+            inout("rcx") count => _
+        );
+    }
+}
+
 #[inline(always)]
 pub fn outl(port: u16, value: u32) {
     unsafe {

@@ -35,7 +35,11 @@ pub fn print_stack_trace(max_frames: usize, rbp: u64) {
 }
 
 fn get_function_name(function_address: u64) -> Result<(String, u64), ()> {
-    if crate::drivers::fs::vfs::VFS_INSTANCES.lock().read().len() == 0 {
+    if crate::drivers::fs::vfs::VFS_INSTANCES
+        .lock()
+        .read()
+        .is_empty()
+    {
         return Err(());
     }
 
@@ -58,7 +62,7 @@ fn get_function_name(function_address: u64) -> Result<(String, u64), ()> {
         }
 
         let (address, function_name) = (
-            u64::from_str_radix(&line_parts[0], 16).ok().ok_or(())?,
+            u64::from_str_radix(line_parts[0], 16).ok().ok_or(())?,
             line_parts[1],
         );
 

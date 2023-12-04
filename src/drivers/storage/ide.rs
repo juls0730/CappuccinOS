@@ -3,7 +3,7 @@ use core::mem::size_of;
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
 use crate::{
-    arch::io::{inb, insw, inw, outb},
+    arch::io::{inb, insw, inw, outb, outsw, outw},
     drivers::{
         fs::fat,
         storage::drive::{GPTBlock, GPTPartitionEntry},
@@ -161,29 +161,7 @@ enum ATADriveDirection {
     Write = 0x01,
 }
 
-static DRIVE_ID: Mutex<[[u16; 256]; 2]> = Mutex::new([[0u16; 256]; 2]);
-
 pub fn init() {
-    // for pci_device in super::pci::PCI_DEVICES.lock().read() {
-    //     if pci_device.class_code != 0x01 || pci_device.subclass_code != 0x01 {
-    //         continue;
-    //     }
-
-    //     let (bar0, bar1, bar2, bar3, bar4, _) =
-    //         super::pci::get_pci_bar_addresses(pci_device.bus, pci_device.device, pci_device.func);
-
-    //     crate::println!(
-    //         "bar0: {} bar1: {} bar2: {} bar3: {} bar4: {}",
-    //         bar0,
-    //         bar1,
-    //         bar2,
-    //         bar3,
-    //         bar4
-    //     );
-
-    //     ide_initialize(bar0, bar1, bar2, bar3, bar4);
-    // }
-    // crate::println!("{:?}", ata_identify_drive(0xB0));
     ide_initialize(0x1F0, 0x3F6, 0x170, 0x376, 0x000);
 }
 
@@ -193,7 +171,7 @@ struct ATABus {
     control_bar: u16,
 }
 
-impl<'a> ATABus {
+impl ATABus {
     fn new(io_bar: u16, control_bar: u16) -> Arc<Self> {
         let io_bar = io_bar & 0xFFFC;
         let control_bar = control_bar & 0xFFFC;
@@ -207,7 +185,7 @@ impl<'a> ATABus {
     pub fn select(&self, drive: u8) {
         outb(
             self.io_bar + ATADriveDataRegister::DeviceSelect as u16,
-            drive as u8,
+            drive,
         );
     }
 
@@ -310,6 +288,50 @@ impl<'a> ATABus {
         sector: u64,
         sector_count: usize,
     ) -> Result<Arc<[u8]>, ()> {
+        let mut buffer: Vec<u8> = Vec::with_capacity(ATA_SECTOR_SIZE * sector_count);
+        unsafe { buffer.set_len(buffer.capacity()) };
+
+        self.ide_access(
+            drive,
+            sector,
+            sector_count,
+            ATADriveDirection::Read,
+            buffer.as_mut_slice(),
+        )?;
+
+        return Ok(Arc::from(buffer));
+    }
+
+    pub fn write(
+        &self,
+        drive: ATADriveType,
+        sector: u64,
+        sector_count: usize,
+        buffer: &mut [u8],
+    ) -> Result<(), ()> {
+        if buffer.len() < ATA_SECTOR_SIZE * sector_count {
+            return Err(());
+        }
+
+        self.ide_access(
+            drive,
+            sector,
+            sector_count,
+            ATADriveDirection::Write,
+            buffer,
+        )?;
+
+        return Ok(());
+    }
+
+    fn ide_access(
+        &self,
+        drive: ATADriveType,
+        sector: u64,
+        sector_count: usize,
+        direction: ATADriveDirection,
+        buffer: &mut [u8],
+    ) -> Result<(), ()> {
         self.await_busy();
 
         let using_lba48 = sector >= (1 << 28) - 1;
@@ -342,7 +364,7 @@ impl<'a> ATABus {
             );
             outb(
                 self.io_bar + ATADriveDataRegister::LBA0 as u16,
-                (sector >> 16) as u8,
+                sector as u8,
             );
             outb(
                 self.io_bar + ATADriveDataRegister::LBA1 as u16,
@@ -350,10 +372,13 @@ impl<'a> ATABus {
             );
             outb(
                 self.io_bar + ATADriveDataRegister::LBA2 as u16,
-                sector as u8,
+                (sector >> 16) as u8,
             );
 
-            self.send_command(ATADriveCommand::ReadPIOExt);
+            match direction {
+                ATADriveDirection::Read => self.send_command(ATADriveCommand::ReadPIOExt),
+                ATADriveDirection::Write => self.send_command(ATADriveCommand::WritePIOExt),
+            }
         } else {
             self.select(0xE0 | (drive as u8) | ((sector >> 24) as u8 & 0x0F));
 
@@ -374,39 +399,64 @@ impl<'a> ATABus {
                 (sector >> 16) as u8,
             );
 
-            self.send_command(ATADriveCommand::ReadPIO);
+            match direction {
+                ATADriveDirection::Read => self.send_command(ATADriveCommand::ReadPIO),
+                ATADriveDirection::Write => self.send_command(ATADriveCommand::WritePIO),
+            }
         }
 
         // sector count * 512 = bytes in array
-        let array_size = (sector_count as usize) * ATA_SECTOR_SIZE;
+        let array_size = (sector_count) * ATA_SECTOR_SIZE;
+
+        // Since this is an internal function, this should never fail
+        assert!(buffer.len() >= array_size);
 
         // Allocate memory for the array that stores the sector data
-        let mut buffer = Vec::new();
-        buffer.reserve_exact(array_size);
-
+        let mut buffer_offset = 0;
         for i in 0..sector_count {
             self.wait_for_drive_ready()
                 .map_err(|_| crate::log_error!("Error reading IDE Device"))?;
 
             // # Safety
             //
-            // We know that buffer is the exact size of count, so it will never panic:tm:
-            unsafe {
-                insw(
-                    self.io_bar + ATADriveDataRegister::Data as u16,
-                    (buffer.as_mut_ptr() as *mut u16)
-                        .add((i as usize * ATA_SECTOR_SIZE) / size_of::<u16>()),
-                    ATA_SECTOR_SIZE / size_of::<u16>() as usize,
-                );
+            // We know that buffer is at least sector_count * ATA_SECTOR_SIZE, so it will never panic:tm:
+            // unsafe {
+            //     match direction {
+            //         ATADriveDirection::Read => insw(
+            //             self.io_bar + ATADriveDataRegister::Data as u16,
+            //             (buffer.as_mut_ptr() as *mut u16)
+            //                 .add((i * ATA_SECTOR_SIZE) / size_of::<u16>()),
+            //             ATA_SECTOR_SIZE / size_of::<u16>(),
+            //         ),
+            //         ATADriveDirection::Write => outsw(
+            //             self.io_bar + ATADriveDataRegister::Data as u16,
+            //             (buffer.as_mut_ptr() as *mut u16)
+            //                 .add((i * ATA_SECTOR_SIZE) / size_of::<u16>()),
+            //             ATA_SECTOR_SIZE / size_of::<u16>(),
+            //         ),
+            //     }
+            // }
 
-                buffer.set_len(buffer.len() + ATA_SECTOR_SIZE);
+            for chunk in
+                buffer[buffer_offset..(buffer_offset + ATA_SECTOR_SIZE)].chunks_exact_mut(2)
+            {
+                match direction {
+                    ATADriveDirection::Read => {
+                        let word =
+                            inw(self.io_bar + ATADriveDataRegister::Data as u16).to_le_bytes();
+                        chunk.copy_from_slice(&word);
+                    }
+                    ATADriveDirection::Write => {
+                        let word = u16::from_le_bytes(chunk.try_into().unwrap());
+                        outw(self.io_bar + ATADriveDataRegister::Data as u16, word);
+                    }
+                }
             }
+
+            buffer_offset += ATA_SECTOR_SIZE;
         }
 
-        // Turn Vec into Arc in favor of Arc's constant time copy
-        let arc_data: Arc<[u8]> = Arc::from(buffer);
-
-        return Ok(arc_data);
+        return Ok(());
     }
 
     fn software_reset(&self) {
@@ -460,7 +510,7 @@ impl ATADrive {
 
 impl BlockDevice for ATADrive {
     fn read(&self, sector: u64, sector_count: usize) -> Result<Arc<[u8]>, ()> {
-        if (sector + sector_count as u64) > self.sector_count() as u64 {
+        if (sector + sector_count as u64) > self.sector_count() {
             return Err(());
         }
 
@@ -475,8 +525,14 @@ impl BlockDevice for ATADrive {
         return unsafe { *(sectors as *const u32) } as u64;
     }
 
-    fn write(&self, sector: u64, data: &[u8]) -> Result<(), ()> {
-        panic!("TODO: ATA Drive writes");
+    fn write(&self, sector: u64, buffer: &mut [u8]) -> Result<(), ()> {
+        let sector_count = buffer.len() / 512;
+
+        self.bus.software_reset();
+
+        return self
+            .bus
+            .write(self.drive_type, sector, sector_count, buffer);
     }
 }
 
@@ -500,8 +556,8 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
 
         let drive = ATADrive::new(bus.clone(), drive_type);
 
-        if drive.is_ok() {
-            DRIVES.lock().write().push(drive.unwrap());
+        if let Ok(drive) = drive {
+            DRIVES.lock().write().push(drive);
         }
     }
 
@@ -520,7 +576,7 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         crate::log_info!(
             "ATA: Drive 0 has {} sectors ({} MB)",
             sectors,
-            (sectors as u64 * ATA_SECTOR_SIZE as u64) / 1024 / 1024
+            (sectors * ATA_SECTOR_SIZE as u64) / 1024 / 1024
         );
 
         let mbr_sector = drive.read(0, 1).expect("Failed to read first sector");
@@ -601,7 +657,7 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         }
 
         for &partition in partitions.iter() {
-            let fat_fs = fat::FATFS::new(drive, partition);
+            let fat_fs = fat::FatFs::new(drive, partition);
 
             if fat_fs.is_err() {
                 continue;
@@ -609,13 +665,35 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
 
             let fat_fs = fat_fs.unwrap();
 
-            let vfs = crate::drivers::fs::vfs::VFS::new(Box::new(fat_fs));
+            let vfs = crate::drivers::fs::vfs::Vfs::new(Box::new(fat_fs));
 
             crate::drivers::fs::vfs::VFS_INSTANCES
                 .lock()
                 .write()
                 .push(vfs);
+
+            crate::println!(
+                "{:?}",
+                crate::drivers::fs::vfs::VFS_INSTANCES
+                    .lock()
+                    .read()
+                    .last()
+                    .unwrap()
+                    .open("/example.txt")
+                    .unwrap()
+                    .read()
+            );
         }
+
+        let mut buffer = Vec::with_capacity(4096);
+        unsafe { buffer.set_len(buffer.capacity()) };
+        buffer.fill(0x69_u8);
+
+        let _ = drive.write(0, &mut buffer);
+
+        let data = drive.read(0, 1);
+
+        crate::println!("{:X?}", data);
 
         crate::println!("{:?}", partitions);
     }

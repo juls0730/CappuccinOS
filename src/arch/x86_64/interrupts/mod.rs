@@ -36,6 +36,7 @@ struct IdtPtr {
 
 static IDT: Mutex<[IdtEntry; 256]> = Mutex::new([IdtEntry::new(); 256]);
 
+#[derive(Clone, Copy)]
 #[repr(u8)]
 pub enum InterruptIndex {
     Timer = PIC_1_OFFSET,
@@ -43,8 +44,8 @@ pub enum InterruptIndex {
 }
 
 impl InterruptIndex {
-    pub fn as_u8(self) -> u8 {
-        self as u8
+    pub fn as_u8(&self) -> u8 {
+        *self as u8
     }
 }
 
@@ -58,7 +59,7 @@ static mut IDT_PTR: IdtPtr = IdtPtr {
     base: 0,
 };
 
-pub fn idt_set_gate(num: u8, function_ptr: u64) {
+pub fn idt_set_gate(num: u8, function_ptr: usize) {
     let base = function_ptr;
     IDT.lock().write()[num as usize] = IdtEntry {
         base_lo: (base & 0xFFFF) as u16,
@@ -98,13 +99,13 @@ fn idt_init() {
 
         // Set every interrupt to the "null" interrupt handler (it does nothing)
         for num in 0..=255 {
-            idt_set_gate(num, null_interrupt_handler as u64);
+            idt_set_gate(num, null_interrupt_handler as usize);
         }
 
         exceptions::set_exceptions();
 
-        idt_set_gate(InterruptIndex::Timer.as_u8(), timer_handler as u64);
-        idt_set_gate(0x80, syscall as u64);
+        idt_set_gate(InterruptIndex::Timer.as_u8(), timer_handler as usize);
+        idt_set_gate(0x80, syscall as usize);
 
         core::arch::asm!(
             "lidt [{}]",

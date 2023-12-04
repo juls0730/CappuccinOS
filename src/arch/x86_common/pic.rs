@@ -1,7 +1,7 @@
 // Originally from pic8259 (https://docs.rs/pic8259/0.10.1/pic8259/)
 // But this one feeds my addiction of not adding unnecessary crates
 // And I can read and learn about the PIC too ig
-// Driver for the 8086 PIC, we might switch to the APIC later on.
+// Driver for the 8086 PIC, we will switch to the APIC later on.
 
 use super::io::{io_wait, outb};
 
@@ -114,11 +114,10 @@ impl ChainedPics {
     }
 
     pub fn notify_end_of_interrupt(&mut self, interrupt_id: u8) {
-        if self.handles_interrupt(interrupt_id) {
-            if self.pics[1].handles_interrupt(interrupt_id) {
-                self.pics[1].end_of_interrupt();
-            }
+        if self.handles_interrupt(interrupt_id) && self.pics[1].handles_interrupt(interrupt_id) {
+            self.pics[1].end_of_interrupt();
         }
+
         self.pics[0].end_of_interrupt();
     }
 }

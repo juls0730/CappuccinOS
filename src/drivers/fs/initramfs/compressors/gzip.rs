@@ -7,19 +7,20 @@ enum ZlibCompressionLevel {
     Best,
 }
 
-impl Into<ZlibCompressionLevel> for u8 {
-    fn into(self) -> ZlibCompressionLevel {
-        match self {
-            0 => ZlibCompressionLevel::Fastest,
-            1 => ZlibCompressionLevel::Fast,
-            2 => ZlibCompressionLevel::Default,
-            3 => ZlibCompressionLevel::Best,
-            _ => panic!("Unexpected compression level {self}"),
+impl From<u8> for ZlibCompressionLevel {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Self::Fastest,
+            1 => Self::Fast,
+            2 => Self::Default,
+            3 => Self::Best,
+            _ => panic!("Unexpected compression level {value}"),
         }
     }
 }
 
-// ZLIB steam, see RFC 1950
+// RFC 1950: "ZLIB Compressed Data Format Specification"
+// RFC 1951: "DEFLATE Compressed Data Format Specification"
 pub fn uncompress_data(bytes: &[u8]) -> &[u8] {
     assert!(bytes.len() > 2);
 

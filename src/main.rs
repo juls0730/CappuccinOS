@@ -56,6 +56,15 @@ pub struct KernelFeatures {
     pub fat_in_mem: bool,
 }
 
+impl KernelFeatures {
+    fn update_option(&mut self, option: &str, value: &str) {
+        match option {
+            "fat_in_mem" => self.fat_in_mem = value == "true",
+            _ => {}
+        }
+    }
+}
+
 pub static KERNEL_FEATURES: libs::lazy::Lazy<KernelFeatures> =
     libs::lazy::Lazy::new(parse_kernel_cmdline);
 
@@ -86,24 +95,15 @@ fn parse_kernel_cmdline() -> KernelFeatures {
         .split_whitespace()
         .collect::<Vec<&str>>();
 
-    for &arg in kernel_arguments.iter() {
-        let arg_parts = arg.split("=").collect::<Vec<&str>>();
-        let mut arg_parts = arg_parts.iter().peekable();
+    crate::println!("{kernel_arguments:?}");
 
-        for _ in 0..arg_parts.len() {
-            let part = arg_parts.next();
-            if part.is_none() {
-                break;
-            }
+    for item in kernel_arguments {
+        let parts: Vec<&str> = item.split('=').collect();
 
-            match part {
-                Some(&"fat_in_mem") => {
-                    if arg_parts.peek() == Some(&&"false") {
-                        kernel_features.fat_in_mem = false;
-                    }
-                }
-                _ => {}
-            }
+        if parts.len() == 2 {
+            let (option, value) = (parts[0], parts[1]);
+
+            kernel_features.update_option(option, value);
         }
     }
 

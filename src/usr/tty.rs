@@ -51,7 +51,7 @@ impl Console {
         let framebuffer = crate::drivers::video::get_framebuffer();
 
         // Enable serial if it initialized correctly
-        if crate::drivers::serial::POISONED.load(Ordering::SeqCst) == false {
+        if !crate::drivers::serial::POISONED.load(Ordering::SeqCst) {
             self.feature_bits.store(
                 self.feature_bits.load(Ordering::SeqCst) | 1 << 1,
                 Ordering::SeqCst,
@@ -121,7 +121,7 @@ impl Console {
         let mut in_escape_sequence = false;
         let mut color_code_buffer = String::new();
 
-        for (_i, character) in string.chars().enumerate() {
+        for character in string.chars() {
             if in_escape_sequence {
                 if character == 'm' {
                     in_escape_sequence = false;
@@ -251,11 +251,7 @@ impl Console {
                     screen_size - skip,
                 );
 
-                crate::libs::util::memset32(
-                    second_buffer.add(screen_size - skip) as *mut u32,
-                    0x000000,
-                    skip,
-                );
+                crate::libs::util::memset32(second_buffer.add(screen_size - skip), 0x000000, skip);
 
                 core::ptr::copy_nonoverlapping(second_buffer, framebuffer, screen_size);
             }
@@ -267,11 +263,7 @@ impl Console {
                     screen_size - skip,
                 );
 
-                crate::libs::util::memset32(
-                    framebuffer.add(screen_size - skip) as *mut u32,
-                    0x000000,
-                    skip,
-                );
+                crate::libs::util::memset32(framebuffer.add(screen_size - skip), 0x000000, skip);
             }
         }
     }
@@ -416,14 +408,14 @@ fn color_to_hex(color: u8) -> u32 {
 
 #[macro_export]
 macro_rules! println {
-    () => (crate::print!("\n"));
-    ($($arg:tt)*) => (crate::print!("{}\n", &alloc::format!($($arg)*)));
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n", &alloc::format!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => (
-        crate::usr::tty::CONSOLE.puts(&alloc::format!($($arg)*))
+        $crate::usr::tty::CONSOLE.puts(&alloc::format!($($arg)*))
     )
 }
 
@@ -441,7 +433,7 @@ impl InputBuffer {
     }
 
     pub fn pop(&mut self) {
-        if self.buffer.len() > 0 {
+        if !self.buffer.is_empty() {
             self.buffer.pop();
         }
     }
@@ -495,7 +487,7 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
     }
 
     if key.character.unwrap() == '\u{0008}' {
-        if input_buffer.buffer.len() == 0 {
+        if input_buffer.buffer.is_empty() {
             return;
         }
 
@@ -513,7 +505,7 @@ pub fn handle_key(key: crate::drivers::keyboard::Key) {
 pub fn exec(command: &str) {
     let (command, args) = parse_input(command.trim());
 
-    if command == "" {
+    if command.is_empty() {
         return;
     }
 
@@ -531,7 +523,7 @@ pub fn exec(command: &str) {
     }
 
     if command == "memalloc" {
-        if args.len() == 0 {
+        if args.is_empty() {
             println!("Allocation size is required. See --help for detailed instructions.");
             return;
         }
@@ -556,7 +548,7 @@ pub fn exec(command: &str) {
             let layout = core::alloc::Layout::from_size_align(size.unwrap(), 16).unwrap();
 
             let mem = unsafe { alloc(layout) as *mut u16 };
-            unsafe { *(mem as *mut u16) = 42 };
+            unsafe { *(mem) = 42 };
             println!("{mem:p} val: {}", unsafe { *(mem) });
         } else {
             // deallocate
@@ -569,7 +561,7 @@ pub fn exec(command: &str) {
             let mut size = 0;
 
             for arg in args {
-                if arg.starts_with("-") {
+                if arg.starts_with('-') {
                     continue;
                 }
 
@@ -604,7 +596,7 @@ pub fn exec(command: &str) {
     }
 
     if command == "memtest" {
-        if args.len() == 0 {
+        if args.is_empty() {
             println!("Memory address to test is required.");
             return;
         }
@@ -643,7 +635,7 @@ pub fn exec(command: &str) {
     if command == "echo" {
         let mut input = "";
 
-        if args.len() != 0 {
+        if !args.is_empty() {
             input = args[0].as_str();
         }
 
@@ -683,7 +675,7 @@ pub fn exec(command: &str) {
     }
 
     if command == "read" {
-        if args.len() < 1 {
+        if args.is_empty() {
             println!("read: usage error: at least one argument is required!");
             return;
         }
@@ -809,9 +801,9 @@ fn parse_escaped_char(next_char: char) -> char {
 }
 
 fn parse_memory_address(input: &str) -> Option<u64> {
-    if input.starts_with("0x") {
-        u64::from_str_radix(&input[2..], 16).ok()
+    if let Some(stripped) = input.strip_prefix("0x") {
+        return u64::from_str_radix(stripped, 16).ok();
     } else {
-        None
+        return None;
     }
 }

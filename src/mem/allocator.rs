@@ -59,7 +59,7 @@ impl BuddyAllocator {
 
         let free_lists: Mutex<[*mut FreeBlock; HEAP_BLOCKS]> = Mutex::new(free_lists_buf);
 
-        let heap_start = AtomicPtr::new(heap_start as *mut u8);
+        let heap_start = AtomicPtr::new(heap_start);
         let heap_size = AtomicUsize::new(heap_size);
 
         Self {
