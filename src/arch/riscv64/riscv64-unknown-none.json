@@ -1,0 +1,29 @@
+{
+    "code-model": "medium",
+    "cpu": "generic-rv64",
+    "data-layout": "e-m:e-p:64:64-i64:64-i128:128-n32:64-S128",
+    "llvm-target": "riscv64",
+    "target-endian": "little",
+    "target-pointer-width": "64",
+    "target-c-int-width": "32",
+    "max-atomic-width": "64",
+    "features": "+m,+a,+f,+d,+c",
+    "os": "CappuccinOS",
+    "arch": "riscv64",
+    "linker": "rust-lld",
+    "linker-flavor": "ld.lld",
+    "pre-link-args": {
+        "ld.lld": [
+            "-melf64lriscv",
+            "--script=./src/arch/riscv64/linker.ld"
+        ]
+    },
+    "has-rpath": true,
+    "dynamic-linking": true,
+    "llvm-abiname": "lp64d",
+    "panic-strategy": "abort",
+    "relocation-model": "static",
+    "eh-frame-header": false,
+    "exe-suffix": ".elf",
+    "executables": true
+}
