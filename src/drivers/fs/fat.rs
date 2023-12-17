@@ -23,7 +23,7 @@ use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
 // End Of Chain
 const EOC: u32 = 0x0FFFFFF8;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 enum FatType {
     Fat12,
     Fat16,
@@ -47,6 +47,7 @@ pub struct BIOSParameterBlock {
     pub head_count: u16,           // 10 00 (16)
     pub hidden_sectors: u32,       // 00 00 00 00
     pub large_sector_count: u32,   // 00 F8 01 00 (129024)
+    // pub ebpb: [u8; 54],
     // ---------------------------------
     // - Extended BIOS Parameter Block -
     // ---------------------------------
@@ -193,19 +194,15 @@ impl<'a> FatFs<'a> {
 
         if crate::KERNEL_FEATURES.fat_in_mem {
             let mut fat_vec: Vec<u32> = Vec::with_capacity(bytes_per_fat / 4);
-            unsafe { fat_vec.set_len(fat_vec.capacity()) };
 
             for i in 0..(bpb.sectors_per_fat_ext as usize) {
                 let sector = drive
                     .read(fat_start + i as u64, 1)
                     .expect("Failed to read FAT");
                 for j in 0..(512 / 4) {
-                    fat_vec[i * (512 / 4) + j] = u32::from_le_bytes([
-                        sector[j * 4],
-                        sector[(j * 4) + 1],
-                        sector[(j * 4) + 2],
-                        sector[(j * 4) + 3],
-                    ])
+                    fat_vec.push(u32::from_le_bytes(
+                        sector[j * 4..(j * 4 + 4)].try_into().unwrap(),
+                    ))
                 }
             }
 
@@ -288,7 +285,7 @@ impl<'a> FatFs<'a> {
                 continue; // Directory is unused, ignore it
             } else if bytes[11] == FileEntryAttributes::LongFileName as u8 {
                 // Entry is LFN (step 3)
-                // read long filename somehow (step 4)
+                // read long filename (step 4)
                 let long_filename_part: LongFileName;
 
                 unsafe {

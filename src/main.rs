@@ -1,5 +1,4 @@
-#![feature(abi_x86_interrupt)]
-#![feature(naked_functions)]
+#![feature(abi_x86_interrupt, naked_functions)]
 #![no_std]
 #![no_main]
 
@@ -35,9 +34,14 @@ pub extern "C" fn _start() -> ! {
 
     // drivers::acpi::init_acpi();
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     drivers::pci::enumerate_pci_bus();
 
     drivers::fs::vfs::init();
+
+    if let Some(kernel) = KERNEL_REQUEST.get_response().get() {
+        crate::println!("{:X?}", kernel.kernel_file.get().unwrap().gpt_disk_uuid);
+    }
 
     crate::println!(
         "Total memory: {}",
@@ -58,6 +62,7 @@ pub struct KernelFeatures {
 
 impl KernelFeatures {
     fn update_option(&mut self, option: &str, value: &str) {
+        #[allow(clippy::single_match)]
         match option {
             "fat_in_mem" => self.fat_in_mem = value == "true",
             _ => {}
@@ -113,11 +118,14 @@ fn parse_kernel_cmdline() -> KernelFeatures {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     crate::log_error!("{}", info);
-    let rbp: u64;
-    unsafe {
-        core::arch::asm!("mov {0:r}, rbp", out(reg) rbp);
-    };
-    crate::arch::stack_trace::print_stack_trace(6, rbp);
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        let rbp: u64;
+        unsafe {
+            core::arch::asm!("mov {0:r}, rbp", out(reg) rbp);
+        };
+        crate::arch::stack_trace::print_stack_trace(6, rbp);
+    }
 
     hcf();
 }

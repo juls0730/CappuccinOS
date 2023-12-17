@@ -5,6 +5,7 @@ use crate::arch::io::{inb, outb};
 
 // COM1
 pub static PORT: u16 = 0x3f8;
+pub const UART: *mut char = 0x10000000 as *mut char;
 
 pub static POISONED: AtomicBool = AtomicBool::new(false);
 
@@ -55,4 +56,18 @@ fn is_transmit_empty() -> bool {
 pub fn write_serial(character: char) {
     while is_transmit_empty() {}
     outb(PORT, character as u8);
+}
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+pub fn is_transmit_empty() -> bool {
+    return true;
+}
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+pub fn write_serial(character: char) {
+    unsafe {
+        *UART = character;
+    };
+
+    return;
 }

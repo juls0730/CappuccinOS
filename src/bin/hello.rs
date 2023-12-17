@@ -4,7 +4,7 @@
 // use alloc::format;
 
 // // piggyback off of the CappuccinOS allocator
-// // TODO: make a syscall for memory operations
+// // TODO: make a malloc lib for memory operations
 // #[allow(unused_imports)]
 // use CappuccinOS;
 
@@ -20,6 +20,7 @@ pub fn _start(_args: &[&str]) {
 }
 
 fn print(message: &str) {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     unsafe {
         core::arch::asm!(
             "mov rdi, 0x01", // write syscall

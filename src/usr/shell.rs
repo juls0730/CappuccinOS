@@ -110,10 +110,12 @@ pub fn init_shell() {
     prompt();
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    let kbd_result = crate::drivers::keyboard::init();
+    {
+        let kbd_result = crate::drivers::keyboard::init();
 
-    if kbd_result.is_err() {
-        crate::log_error!("Unable to initialize keyboard! {:?}", kbd_result);
+        if kbd_result.is_err() {
+            crate::log_error!("Unable to initialize keyboard! {:?}", kbd_result);
+        }
     }
 
     // #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

@@ -1,3 +1,4 @@
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::arch::interrupts::{idt_set_gate, InterruptIndex};
 // Shitty keyboard driver
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -39,6 +40,7 @@ pub enum KBDError {
     TestFailed,
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn init() -> Result<(), KBDError> {
     // flush output buffer
     while (inb(KBD_COMMAND_AND_STATUS_PORT) & 1) != 0 {

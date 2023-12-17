@@ -5,13 +5,14 @@ MODE ?= release
 ARCH ?= x86_64
 MEMORY ?= 512M
 QEMU_OPTS ?= 
-MKSQUASHFS_OPTS ?= -no-compression
+MKSQUASHFS_OPTS ?= 
 
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
 IMAGE_PATH = ${ARTIFACTS_PATH}/${IMAGE_NAME}
 CARGO_OPTS = --target=src/arch/${ARCH}/${ARCH}-unknown-none.json
-QEMU_OPTS += -m ${MEMORY} -drive format=raw,file=${IMAGE_PATH}
+QEMU_OPTS += -m ${MEMORY} -drive id=hd0,format=raw,file=${IMAGE_PATH}
+LIMINE_BOOT_VARIATION = X64
 
 ifeq (${MODE},release)
 	CARGO_OPTS += --release
@@ -19,9 +20,18 @@ else
 	QEMU_OPTS += -s -S
 endif
 
+ifeq (${ARCH},riscv64)
+	LIMINE_BOOT_VARIATION := RISCV64
+	UEFI := true
+endif
+
 ifneq (${UEFI},)
-	RUN_OPTS := ovmf
-	QEMU_OPTS += -bios bin/ovmf/OVMF.fd
+	RUN_OPTS := ovmf-${ARCH}
+	ifeq (${ARCH},riscv64)
+		QEMU_OPTS += -drive if=pflash,unit=0,format=raw,file=bin/ovmf-riscv64/OVMF.fd -M virt
+	else
+		QEMU_OPTS += -bios ovmf/ovmf-${ARCH}/OVMF.fd
+	endif
 endif
 
 .PHONY: all check prepare-bin-files copy-initramfs-files compile-initramfs copy-iso-files build-iso compile-bootloader compile-binaries ovmf clean run build line-count
@@ -44,7 +54,6 @@ prepare-bin-files:
 		mkdir -p ${INITRAMFS_PATH}
 
 copy-initramfs-files:
-		# Stub for now ;)
 		echo "Hello World from Initramfs" > ${INITRAMFS_PATH}/example.txt
 		echo "Second file for testing" > ${INITRAMFS_PATH}/example2.txt
 		mkdir -p ${INITRAMFS_PATH}/firstdir/seconddirbutlonger/
@@ -60,7 +69,7 @@ copy-iso-files:
 		mkdir -p ${ISO_PATH}/EFI/BOOT
 
 		cp -v limine.cfg limine/limine-bios.sys ${ISO_PATH}/boot/limine
-		cp -v limine/BOOTX64.EFI ${ISO_PATH}/EFI/BOOT/
+		cp -v limine/BOOT${LIMINE_BOOT_VARIATION}.EFI ${ISO_PATH}/EFI/BOOT/
 
 		# OS files
 		cp -v target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf ${ISO_PATH}/boot
@@ -100,8 +109,10 @@ build-iso: partition-iso
 	fi
 		python scripts/demangle-symbols.py
 		mv scripts/symbols.table ${ISO_PATH}/boot
-		# Install the Limine bootloader on the ISO
+ifeq (${ARCH},x86_64)
+		# Install the Limine bootloader for bios installs
 		./limine/limine bios-install ${IMAGE_PATH}
+endif
 
 		# Make a FAT32 FS and copy files in /bin/iso_root into the ISO starting at 1M or exactly 2048 sectors
 		mformat -F -i ${IMAGE_PATH}@@1M
@@ -120,15 +131,28 @@ compile-bootloader:
 compile-binaries:
 		cargo build ${CARGO_OPTS}
 
-ovmf:
-	mkdir -p bin/ovmf
-	cd bin/ovmf && curl -Lo OVMF.fd https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd
+ovmf-x86_64: ovmf
+	mkdir -p ovmf/ovmf-x86_64
+	@if [ ! -d "ovmf/ovmf-x86_64/OVMF.fd" ]; then \
+		cd ovmf/ovmf-x86_64 && curl -Lo OVMF.fd https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd; \
+	fi
+
+ovmf-riscv64: ovmf
+	mkdir -p ovmf/ovmf-riscv64
+	@if [ ! -d "ovmf/ovmf-riscv64/OVMF.fd" ]; then \
+		cd ovmf/ovmf-riscv64 && curl -o OVMF.fd https://retrage.github.io/edk2-nightly/bin/RELEASERISCV64_VIRT_CODE.fd && dd if=/dev/zero of=OVMF.fd bs=1 count=0 seek=33554432; \
+	fi
 
 # In debug mode, open a terminal and run this command:
 # gdb target/x86_64-unknown-none/debug/CappuccinOS.elf -ex "target remote :1234"
 
-run: build ${RUN_OPTS}
-		qemu-system-x86_64 ${QEMU_OPTS}
+run: build ${RUN_OPTS} run-${ARCH}
+
+run-x86_64:
+	qemu-system-x86_64 ${QEMU_OPTS}
+
+run-riscv64:
+	qemu-system-riscv64 ${QEMU_OPTS} -M virt -cpu rv64 -device ramfb -device qemu-xhci -device usb-kbd -device virtio-scsi-pci,id=scsi -device scsi-hd,drive=hd0
 
 line-count:
 		cloc --quiet --exclude-dir=bin --csv src/ | tail -n 1 | awk -F, '{print $$5}'

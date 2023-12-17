@@ -1,4 +1,9 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
 
 use crate::libs::mutex::Mutex;
 
@@ -18,12 +23,16 @@ pub trait VfsDirectory {
 pub static VFS_INSTANCES: Mutex<Vec<Vfs>> = Mutex::new(Vec::new());
 
 pub struct Vfs {
+    identifier: String,
     file_system: Box<dyn VfsFileSystem>,
 }
 
 impl Vfs {
-    pub fn new(file_system: Box<dyn VfsFileSystem>) -> Self {
-        return Self { file_system };
+    pub fn new(file_system: Box<dyn VfsFileSystem>, identifier: &str) -> Self {
+        return Self {
+            identifier: identifier.to_string(),
+            file_system,
+        };
     }
 
     pub fn open(&self, path: &str) -> Result<Box<dyn VfsFile + '_>, ()> {

@@ -1,9 +1,7 @@
-use core::mem::size_of;
-
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, format, sync::Arc, vec::Vec};
 
 use crate::{
-    arch::io::{inb, insw, inw, outb, outsw, outw},
+    arch::io::{inb, inw, outb, outw},
     drivers::{
         fs::fat,
         storage::drive::{GPTBlock, GPTPartitionEntry},
@@ -296,7 +294,7 @@ impl ATABus {
             sector,
             sector_count,
             ATADriveDirection::Read,
-            buffer.as_mut_slice(),
+            (buffer.as_mut_ptr(), buffer.len()),
         )?;
 
         return Ok(Arc::from(buffer));
@@ -307,7 +305,7 @@ impl ATABus {
         drive: ATADriveType,
         sector: u64,
         sector_count: usize,
-        buffer: &mut [u8],
+        buffer: &[u8],
     ) -> Result<(), ()> {
         if buffer.len() < ATA_SECTOR_SIZE * sector_count {
             return Err(());
@@ -318,7 +316,7 @@ impl ATABus {
             sector,
             sector_count,
             ATADriveDirection::Write,
-            buffer,
+            (buffer.as_ptr() as *mut u8, buffer.len()),
         )?;
 
         return Ok(());
@@ -330,8 +328,10 @@ impl ATABus {
         sector: u64,
         sector_count: usize,
         direction: ATADriveDirection,
-        buffer: &mut [u8],
+        buffer: (*mut u8, usize),
     ) -> Result<(), ()> {
+        let buffer = unsafe { core::slice::from_raw_parts_mut(buffer.0, buffer.1) };
+
         self.await_busy();
 
         let using_lba48 = sector >= (1 << 28) - 1;
@@ -413,29 +413,9 @@ impl ATABus {
 
         // Allocate memory for the array that stores the sector data
         let mut buffer_offset = 0;
-        for i in 0..sector_count {
+        for _ in 0..sector_count {
             self.wait_for_drive_ready()
                 .map_err(|_| crate::log_error!("Error reading IDE Device"))?;
-
-            // # Safety
-            //
-            // We know that buffer is at least sector_count * ATA_SECTOR_SIZE, so it will never panic:tm:
-            // unsafe {
-            //     match direction {
-            //         ATADriveDirection::Read => insw(
-            //             self.io_bar + ATADriveDataRegister::Data as u16,
-            //             (buffer.as_mut_ptr() as *mut u16)
-            //                 .add((i * ATA_SECTOR_SIZE) / size_of::<u16>()),
-            //             ATA_SECTOR_SIZE / size_of::<u16>(),
-            //         ),
-            //         ATADriveDirection::Write => outsw(
-            //             self.io_bar + ATADriveDataRegister::Data as u16,
-            //             (buffer.as_mut_ptr() as *mut u16)
-            //                 .add((i * ATA_SECTOR_SIZE) / size_of::<u16>()),
-            //             ATA_SECTOR_SIZE / size_of::<u16>(),
-            //         ),
-            //     }
-            // }
 
             for chunk in
                 buffer[buffer_offset..(buffer_offset + ATA_SECTOR_SIZE)].chunks_exact_mut(2)
@@ -525,7 +505,7 @@ impl BlockDevice for ATADrive {
         return unsafe { *(sectors as *const u32) } as u64;
     }
 
-    fn write(&self, sector: u64, buffer: &mut [u8]) -> Result<(), ()> {
+    fn write(&self, sector: u64, buffer: &[u8]) -> Result<(), ()> {
         let sector_count = buffer.len() / 512;
 
         self.bus.software_reset();
@@ -612,10 +592,11 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
             .expect("Failed to read partition table");
 
         crate::println!(
-            "{}, {}, {}",
+            "{}, {}, {}, {:X?}",
             (gpt.partition_entry_count * gpt.partition_entry_size) as usize / ATA_SECTOR_SIZE,
             gpt.partition_entry_count,
-            gpt.partition_entry_size
+            gpt.partition_entry_size,
+            gpt.guid
         );
 
         for i in 0..gpt.partition_entry_count {
@@ -637,6 +618,11 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
                 continue;
             }
 
+            let unique_partition_guid: [u8; 16] = partition_sector
+                [entry_offset + 16..entry_offset + 32]
+                .try_into()
+                .unwrap();
+
             let start_sector = u64::from_le_bytes(
                 partition_sector[entry_offset + 32..entry_offset + 40]
                     .try_into()
@@ -648,11 +634,24 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
                     .unwrap(),
             );
 
+            let attributes = u64::from_le_bytes(
+                partition_sector[entry_offset + 48..entry_offset + 56]
+                    .try_into()
+                    .unwrap(),
+            );
+
+            let partition_name = partition_sector[entry_offset + 56..entry_offset + 128]
+                .try_into()
+                .unwrap();
+
             // Store the parsed information in the partition_entries array
             partitions.push(GPTPartitionEntry {
                 partition_type_guid,
+                unique_partition_guid,
                 start_sector,
                 end_sector,
+                attributes,
+                partition_name,
             });
         }
 
@@ -665,7 +664,10 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
 
             let fat_fs = fat_fs.unwrap();
 
-            let vfs = crate::drivers::fs::vfs::Vfs::new(Box::new(fat_fs));
+            let vfs = crate::drivers::fs::vfs::Vfs::new(
+                Box::new(fat_fs),
+                &format!("{:?}", partition.partition_type_guid),
+            );
 
             crate::drivers::fs::vfs::VFS_INSTANCES
                 .lock()
@@ -684,16 +686,6 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
                     .read()
             );
         }
-
-        let mut buffer = Vec::with_capacity(4096);
-        unsafe { buffer.set_len(buffer.capacity()) };
-        buffer.fill(0x69_u8);
-
-        let _ = drive.write(0, &mut buffer);
-
-        let data = drive.read(0, 1);
-
-        crate::println!("{:X?}", data);
 
         crate::println!("{:?}", partitions);
     }

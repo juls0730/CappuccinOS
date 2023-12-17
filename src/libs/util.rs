@@ -1,6 +1,6 @@
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub unsafe fn memset32(dst: *mut u32, val: u32, count: usize) {
-    if cfg!(not(any(target_arch = "x86", target_arch = "x86_64"))) {
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    {
         let mut buf = dst;
         unsafe {
             while buf < dst.add(count) {
@@ -11,12 +11,15 @@ pub unsafe fn memset32(dst: *mut u32, val: u32, count: usize) {
         return;
     }
 
-    core::arch::asm!(
-        "rep stosd",
-        inout("ecx") count => _,
-        inout("edi") dst => _,
-        inout("eax") val => _
-    );
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        core::arch::asm!(
+            "rep stosd",
+            inout("ecx") count => _,
+            inout("edi") dst => _,
+            inout("eax") val => _
+        );
+    }
 }
 
 pub fn hcf() -> ! {
@@ -25,7 +28,7 @@ pub fn hcf() -> ! {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             core::arch::asm!("hlt");
 
-            #[cfg(target_arch = "aarch64")]
+            #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
             core::arch::asm!("wfi");
         }
     }

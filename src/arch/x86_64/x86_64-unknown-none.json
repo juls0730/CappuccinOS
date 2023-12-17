@@ -8,9 +8,10 @@
     "features": "-mmx,-sse,+soft-float",
     "os": "CappuccinOS",
     "arch": "x86_64",
-    "linker-flavor": "ld",
+    "linker": "rust-lld",
+    "linker-flavor": "ld.lld",
     "pre-link-args": {
-        "ld": [
+        "ld.lld": [
             "-melf_x86_64",
             "--script=./src/arch/x86_64/linker.ld"
         ]

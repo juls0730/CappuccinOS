@@ -3,14 +3,17 @@ use alloc::sync::Arc;
 pub trait BlockDevice {
     fn sector_count(&self) -> u64;
     fn read(&self, sector: u64, sector_count: usize) -> Result<Arc<[u8]>, ()>;
-    fn write(&self, sector: u64, data: &mut [u8]) -> Result<(), ()>;
+    fn write(&self, sector: u64, data: &[u8]) -> Result<(), ()>;
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct GPTPartitionEntry {
     pub partition_type_guid: [u8; 16],
+    pub unique_partition_guid: [u8; 16],
     pub start_sector: u64,
     pub end_sector: u64,
+    pub attributes: u64,
+    pub partition_name: [u8; 72],
 }
 
 #[derive(Debug)]

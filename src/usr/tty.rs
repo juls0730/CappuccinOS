@@ -25,6 +25,7 @@ pub struct Console {
     pub cursor: Cursor,
     feature_bits: AtomicU8,
     pub second_buffer: Mutex<Option<crate::drivers::video::Framebuffer>>,
+    // pub lines: Mutex<Vec<String>>,
 }
 
 pub struct ConsoleFeatures {
@@ -43,6 +44,7 @@ impl Console {
             cursor: Cursor::new(),
             feature_bits: AtomicU8::new(0b00000000),
             second_buffer: Mutex::new(None),
+            // lines: Mutex::new(Vec::new()),
         }
     }
 
@@ -98,6 +100,13 @@ impl Console {
         let rows = framebuffer.height / 16;
         self.columns.store(columns as u16, Ordering::SeqCst);
         self.rows.store(rows as u16, Ordering::SeqCst);
+
+        // let mut lines_lock = self.lines.lock();
+        // lines_lock.write().reserve_exact(rows);
+        // for _ in 0..rows {
+        //     let string = String::with_capacity(columns);
+        //     lines_lock.write().push(string);
+        // }
     }
 
     pub fn get_features(&self) -> ConsoleFeatures {
@@ -114,6 +123,54 @@ impl Console {
             doubled_buffered,
         };
     }
+
+    // pub fn puts(&self, string: &str) {
+    //     let mut lines = Vec::new();
+
+    //     // let mut text_lock = self.text.lock();
+    //     // let text = text_lock.write();
+
+    //     let mut col_idx = 0_usize;
+    //     let mut line_string = String::new();
+    //     for ch in string.chars() {
+    //         if col_idx > self.columns.load(Ordering::SeqCst) as usize - 1 {
+    //             col_idx = 0;
+    //             lines.push(line_string.clone());
+    //             line_string.clear();
+    //         }
+
+    //         if ch == '\n' {
+    //             col_idx = 0;
+    //             lines.push(line_string.clone());
+    //             line_string.clear();
+    //             continue;
+    //         }
+
+    //         line_string.push(ch);
+    //         col_idx += 1;
+    //     }
+
+    //     let mut new_lines = [self.lines.lock().read().as_slice(), lines.as_slice()].concat();
+    //     if new_lines.len() > self.rows.load(Ordering::SeqCst) as usize {
+    //         new_lines.reverse();
+    //         new_lines.resize(self.rows.load(Ordering::SeqCst) as usize - 1, String::new());
+    //         new_lines.reverse();
+    //     }
+
+    //     (*self.lines.lock().write()) = new_lines;
+
+    //     crate::drivers::video::fill_screen(0x000000, *self.second_buffer.lock().read());
+    //     self.cursor.set_pos(0, 0);
+    //     for line in self.lines.lock().read() {
+    //         self._puts(line);
+    //         self.cursor
+    //             .set_pos(0, self.cursor.cy.load(Ordering::SeqCst) + 1);
+    //         crate::drivers::serial::write_serial('\r');
+    //         crate::drivers::serial::write_serial('\n')
+    //     }
+
+    //     // self._puts(string);
+    // }
 
     // Uses a stripped down version of ANSI color codes:
     // \033[FG;BGm
@@ -191,6 +248,7 @@ impl Console {
                     self.cursor.bg.load(Ordering::SeqCst),
                     *self.second_buffer.lock().read(),
                 );
+
                 continue;
             }
 
@@ -226,6 +284,15 @@ impl Console {
 
         self.cursor.set_color(0xbababa, 0x000000);
     }
+
+    // pub fn reblit(&self) {
+    //     self.cursor.set_pos(0, 0);
+    //     self.reblit.store(true, Ordering::SeqCst);
+
+    //     self.puts(&self.text.lock().read().trim_end_matches('\n'));
+
+    //     self.reblit.store(false, Ordering::SeqCst);
+    // }
 
     pub fn scroll_console(&self) {
         let framebuffer_attributes = crate::drivers::video::get_framebuffer()
@@ -695,17 +762,20 @@ pub fn exec(command: &str) {
     }
 
     if command == "test" {
-        let message = "Hello from syscall!\n";
-        unsafe {
-            core::arch::asm!(
-                "mov rdi, 0x01", // write syscall
-                "mov rsi, 0x01", // stdio (but it doesnt matter)
-                "mov rdx, {0:r}", // pointer
-                "mov rcx, {1:r}", // count
-                "int 0x80",
-                in(reg) message.as_ptr(),
-                in(reg) message.len()
-            );
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            let message = "Hello from syscall!\n";
+            unsafe {
+                core::arch::asm!(
+                    "mov rdi, 0x01", // write syscall
+                    "mov rsi, 0x01", // stdio (but it doesnt matter)
+                    "mov rdx, {0:r}", // pointer
+                    "mov rcx, {1:r}", // count
+                    "int 0x80",
+                    in(reg) message.as_ptr(),
+                    in(reg) message.len()
+                );
+            }
         }
 
         return;

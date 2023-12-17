@@ -1,6 +1,7 @@
 mod font;
 
 use crate::libs::mutex::Mutex;
+use alloc::vec;
 use limine::FramebufferRequest;
 
 pub static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new(0);
@@ -35,6 +36,8 @@ pub fn put_char(
     mirror_buffer: Option<Framebuffer>,
 ) {
     let font = font::G_8X16_FONT;
+    let font_width = 8;
+    let font_height = 16;
 
     if character as usize > u8::MAX as usize {
         character = '\x00'; // rounded question mark
@@ -46,13 +49,13 @@ pub fn put_char(
     let framebuffer =
         get_framebuffer().expect("Tried to use framebuffer, but framebuffer was not found");
 
-    let start_x = cx * 8;
-    let start_y = cy * 16;
+    let start_x = cx * font_width as u16;
+    let start_y = cy * font_height as u16;
 
     for (row_idx, &character_byte) in character_array.iter().enumerate() {
-        let mut byte = [bg; 8];
+        let mut byte = vec![bg; font_width];
         for (i, bit) in byte.iter_mut().enumerate() {
-            *bit = [bg, fg][((character_byte >> (7 - i)) & 0b00000001) as usize]
+            *bit = [bg, fg][((character_byte >> ((font_width - 1) - i)) & 0b00000001) as usize]
         }
 
         let row_start_offset = (start_y as usize + row_idx) * framebuffer.pitch

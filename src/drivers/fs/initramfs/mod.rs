@@ -43,15 +43,6 @@ pub fn init() {
     }
     let initramfs = initramfs.unwrap();
 
-    crate::println!("Initramfs is located at: {:#018X?}", unsafe {
-        initramfs.base.as_ptr().unwrap()
-            ..initramfs
-                .base
-                .as_ptr()
-                .unwrap()
-                .add(initramfs.length as usize)
-    });
-
     let squashfs = Squashfs::new(initramfs.base.as_ptr().unwrap());
 
     if squashfs.is_err() {
@@ -61,15 +52,15 @@ pub fn init() {
 
     let squashfs = squashfs.unwrap();
 
-    crate::println!("{:X?}", squashfs);
-    crate::println!("{:?}", squashfs.superblock.features());
-
     crate::println!(
-        "{:X?}",
-        squashfs
-            .open("/firstdir/seconddirbutlonger/yeah.txt")
-            .unwrap()
-            .read()
+        "\033[92m{:?}",
+        core::str::from_utf8(
+            &squashfs
+                .open("/firstdir/seconddirbutlonger/yeah.txt")
+                .unwrap()
+                .read()
+                .unwrap()
+        )
     );
 }
 
@@ -88,9 +79,9 @@ struct Squashfs<'a> {
 
 impl Squashfs<'_> {
     fn new(ptr: *mut u8) -> Result<Squashfs<'static>, ()> {
-        crate::println!("Parsing initramfs fs at {:p}", ptr);
+        crate::log_info!("Parsing initramfs at {:p}", ptr);
 
-        // bytes used from superblock
+        // 40 is the offset for bytes used by the archive in the superblock
         let length = unsafe { u64::from_le(*(ptr.add(40) as *const u64)) as usize };
 
         let squashfs_data: &[u8] = unsafe { core::slice::from_raw_parts(ptr, length) };
@@ -100,36 +91,81 @@ impl Squashfs<'_> {
         let data_table = &squashfs_data
             [core::mem::size_of::<SquashfsSuperblock>()..superblock.inode_table as usize];
 
-        let inode_table =
-            &squashfs_data[superblock.inode_table as usize..superblock.dir_table as usize];
+        macro_rules! get_metadata_table {
+            ($table_type:ident) => {{
+                // get table size minus the top bit (indicates compression) plus 2, because
+                // The table size is minus the size of the size header (two bytes)
+                let table_size = (u16::from_le_bytes(
+                    squashfs_data
+                        [superblock.$table_type as usize..superblock.$table_type as usize + 2]
+                        .try_into()
+                        .unwrap(),
+                ) & 0x7FFF)
+                    + 2;
 
-        let directory_table =
-            &squashfs_data[superblock.dir_table as usize..superblock.frag_table as usize];
-
-        let mut fragment_table: Option<&[u8]> = None;
-
-        if superblock.frag_table != u64::MAX {
-            fragment_table = Some(
-                &squashfs_data[superblock.frag_table as usize..superblock.export_table as usize],
-            );
+                &squashfs_data[superblock.$table_type as usize
+                    ..superblock.$table_type as usize + table_size as usize]
+            }};
         }
 
-        let mut export_table: Option<&[u8]> = None;
+        let inode_table = get_metadata_table!(inode_table);
 
-        if superblock.export_table != u64::MAX {
-            export_table = Some(
-                &squashfs_data[superblock.export_table as usize..superblock.id_table as usize],
-            );
-        }
+        let directory_table = get_metadata_table!(dir_table);
 
-        let mut id_table: &[u8] = &squashfs_data[superblock.id_table as usize..];
-        let mut xattr_table: Option<&[u8]> = None;
+        let fragment_table: Option<&[u8]> = {
+            if superblock.frag_table == u64::MAX {
+                None
+            } else {
+                if superblock.export_table != u64::MAX {
+                    Some(
+                        &squashfs_data
+                            [superblock.frag_table as usize..superblock.export_table as usize],
+                    )
+                } else if superblock.xattr_table != u64::MAX {
+                    Some(
+                        &squashfs_data
+                            [superblock.frag_table as usize..superblock.xattr_table as usize],
+                    )
+                } else {
+                    Some(
+                        &squashfs_data
+                            [superblock.frag_table as usize..superblock.id_table as usize],
+                    )
+                }
+            }
+        };
 
-        if superblock.xattr_table != u64::MAX {
-            id_table =
-                &squashfs_data[superblock.id_table as usize..superblock.xattr_table as usize];
-            xattr_table = Some(&squashfs_data[superblock.xattr_table as usize..]);
-        }
+        let export_table: Option<&[u8]> = {
+            if superblock.export_table == u64::MAX {
+                None
+            } else {
+                if superblock.xattr_table != u64::MAX {
+                    Some(
+                        &squashfs_data
+                            [superblock.export_table as usize..superblock.xattr_table as usize],
+                    )
+                } else {
+                    Some(
+                        &squashfs_data
+                            [superblock.export_table as usize..superblock.id_table as usize],
+                    )
+                }
+            }
+        };
+
+        let id_table: &[u8] = if superblock.xattr_table != u64::MAX {
+            &squashfs_data[superblock.id_table as usize..superblock.xattr_table as usize]
+        } else {
+            &squashfs_data[superblock.id_table as usize..]
+        };
+
+        let xattr_table: Option<&[u8]> = {
+            if superblock.xattr_table == u64::MAX {
+                None
+            } else {
+                Some(&squashfs_data[superblock.xattr_table as usize..])
+            }
+        };
 
         return Ok(Squashfs {
             superblock,
@@ -212,7 +248,7 @@ impl Squashfs<'_> {
 
             match self.superblock.compressor {
                 SquashfsCompressionType::Gzip => {
-                    buffer.extend_from_slice(compressors::gzip::uncompress_data(bytes));
+                    buffer.extend_from_slice(&compressors::gzip::uncompress_data(bytes).unwrap());
                 }
                 _ => {
                     crate::println!("Unsupported compression type")
@@ -239,13 +275,7 @@ impl<'a> VfsFileSystem for Squashfs<'a> {
         let path_components: Vec<&str> = path.trim_start_matches('/').split('/').collect();
         let mut current_dir = self.read_root_dir();
 
-        crate::println!("\033[94m{}\033[0m", "-".repeat(40));
         for (i, &part) in path_components.iter().enumerate() {
-            crate::println!(
-                "{}\ncur: {current_dir:?}\n{part}\n{path}\n{0}",
-                "-".repeat(20)
-            );
-
             let file = current_dir.find(part).ok_or(())?;
 
             match file {
@@ -261,7 +291,6 @@ impl<'a> VfsFileSystem for Squashfs<'a> {
                 }
             }
         }
-        crate::println!("\033[94m{}\033[0m", "-".repeat(40));
 
         return Err(());
     }
@@ -370,20 +399,10 @@ impl<'a> BasicDirectoryInode<'a> {
     fn entries(&self) -> Arc<[Inode]> {
         let mut entries: Vec<Inode> = Vec::new();
 
-        let directory_table = &self.header.squashfs.get_decompressed_table(
-            self.header.squashfs.directory_table,
-            (
-                false,
-                Some(
-                    !self
-                        .header
-                        .squashfs
-                        .superblock
-                        .features()
-                        .uncompressed_data_blocks,
-                ),
-            ),
-        );
+        let directory_table = &self
+            .header
+            .squashfs
+            .get_decompressed_table(self.header.squashfs.directory_table, (true, None));
 
         let directory_table_header =
             DirectoryTableHeader::from_bytes(&directory_table[self.block_offset as usize..]);
@@ -408,22 +427,10 @@ impl<'a> BasicDirectoryInode<'a> {
     }
 
     fn find(&self, name: &str) -> Option<Inode<'a>> {
-        crate::println!("Searching for file {name} in directory");
-
-        let directory_table = &self.header.squashfs.get_decompressed_table(
-            self.header.squashfs.directory_table,
-            (
-                false,
-                Some(
-                    !self
-                        .header
-                        .squashfs
-                        .superblock
-                        .features()
-                        .uncompressed_data_blocks,
-                ),
-            ),
-        );
+        let directory_table = &self
+            .header
+            .squashfs
+            .get_decompressed_table(self.header.squashfs.directory_table, (true, None));
 
         let directory_table_header =
             DirectoryTableHeader::from_bytes(&directory_table[self.block_offset as usize..]);
@@ -435,8 +442,6 @@ impl<'a> BasicDirectoryInode<'a> {
             let directroy_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
 
             offset += 8 + directroy_table_entry.name.len();
-
-            crate::println!("{}", directroy_table_entry.name);
 
             if directroy_table_entry.name == name {
                 return Some(
@@ -490,12 +495,23 @@ impl<'a> VfsFile for BasicFileInode<'a> {
         let mut block_data: Vec<u8> = Vec::with_capacity(8192 * block_count);
 
         unsafe {
+            let data_table = self.header.squashfs.get_decompressed_table(
+                self.header.squashfs.data_table,
+                (
+                    false,
+                    Some(
+                        !self
+                            .header
+                            .squashfs
+                            .superblock
+                            .features()
+                            .uncompressed_data_blocks,
+                    ),
+                ),
+            );
+
             core::ptr::copy_nonoverlapping(
-                self.header
-                    .squashfs
-                    .data_table
-                    .as_ptr()
-                    .add(self.block_offset as usize),
+                data_table.as_ptr().add(self.block_offset as usize),
                 block_data.as_mut_ptr(),
                 self.file_size as usize,
             );

@@ -11,7 +11,10 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 - [X] ANSI color codes in console
 - [X] Heap allocation
 - [ ] Externalized kernel modules
-    - [ ] Initramfs
+    - [X] Initramfs
+        - [X] Squashfs driver
+            - [X] Programmatic reads
+            - [X] Decompression
 - [ ] SMP
     - [ ] Use APIC instead of PIC
 - [ ] Pre-emptive multitasking
@@ -27,7 +30,7 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
     - [ ] M.2 NVME device support
 - [ ] Basic shell
   - [X] Basic I/O
-    - [ ] Executing Programs
+    - [ ] Executing Programs from disk
 - [ ] Lua interpreter
 - [ ] Memory management
 - [ ] Network support
@@ -37,7 +40,6 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
 - [ ] User authentication
 - [ ] Power management
 - [ ] Paging
-- [ ] Hardware abstraction layer
 - [ ] RTC Clock
 
 ## Setup
@@ -45,7 +47,6 @@ Before building CappuccinOS, make sure you have the following installed on your 
 
 - rust
 - python
-- binutils
 - sgdisk
 - mtools
 - squashfs-tools
@@ -66,7 +67,7 @@ Install the dependencies:
 <details>
     <summary>Arch</summary>
 
-    sudo pacman -S binutils gptfdisk mtools squashfs-tools python
+    sudo pacman -S gptfdisk mtools squashfs-tools python
     # Optionally
     sudo pacman -S qemu-system-x86
 </details>
@@ -75,7 +76,7 @@ Install the dependencies:
     <summary>Ubuntu</summary>
     Python should be installed by default, and if it's not, make an issue or a PR and I'll fix it
 
-    sudo apt install binutils gdisk mtools squashfs-tools
+    sudo apt install gdisk mtools squashfs-tools
     # Optionally
     sudo apt install qemu
 </details>
@@ -98,6 +99,10 @@ Run on a bare metal machine by flashing to a USB stick or hard drive:
 sudo dd if=bin/CappuccinOS.iso of=/dev/sdX bs=1M && sync
 ```
 **Be careful not to overwrite your hard drive when using `dd`!**
+
+## Supported Architectures
+- x86_64
+- RISC-V64 (experimental until I can get my hands on some RISC-V hardware)
 
 ## Credits an attributions
 Inspiration was mainly from [JDH's Tetris OS](https://www.youtube.com/watch?v=FaILnmUYS_U), mixed with a growing interest in low level in general and an interest in learning rust (yeah, I started this project with not that much rust experience, maybe a CLI app or two, and trust me it shows).
