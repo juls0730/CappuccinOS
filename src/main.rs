@@ -1,4 +1,4 @@
-#![feature(abi_x86_interrupt, naked_functions)]
+#![feature(abi_x86_interrupt, allocator_api, naked_functions)]
 #![no_std]
 #![no_main]
 
@@ -29,8 +29,6 @@ pub extern "C" fn _start() -> ! {
     serial::init_serial();
 
     mem::log_info();
-
-    drivers::fs::initramfs::init();
 
     // drivers::acpi::init_acpi();
 
@@ -118,6 +116,7 @@ fn parse_kernel_cmdline() -> KernelFeatures {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     crate::log_error!("{}", info);
+
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         let rbp: u64;

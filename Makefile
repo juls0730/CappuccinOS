@@ -28,17 +28,17 @@ endif
 ifneq (${UEFI},)
 	RUN_OPTS := ovmf-${ARCH}
 	ifeq (${ARCH},riscv64)
-		QEMU_OPTS += -drive if=pflash,unit=0,format=raw,file=bin/ovmf-riscv64/OVMF.fd -M virt
+		QEMU_OPTS += -drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-riscv64/OVMF.fd -M virt
 	else
 		QEMU_OPTS += -bios ovmf/ovmf-${ARCH}/OVMF.fd
 	endif
 endif
 
-.PHONY: all check prepare-bin-files copy-initramfs-files compile-initramfs copy-iso-files build-iso compile-bootloader compile-binaries ovmf clean run build line-count
+.PHONY: all check run-scripts prepare-bin-files copy-initramfs-files compile-initramfs copy-iso-files build-iso compile-bootloader compile-binaries ovmf clean run build line-count
 
 all: build
 
-build: prepare-bin-files compile-bootloader compile-binaries compile-initramfs build-iso
+build: prepare-bin-files compile-bootloader compile-binaries run-scripts compile-initramfs build-iso
 
 check: 
 		cargo check
@@ -62,6 +62,20 @@ copy-initramfs-files:
 compile-initramfs: copy-initramfs-files
 		# Make squashfs without compression temporaily so I can get it working before I have to write a gzip driver
 		mksquashfs ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.img ${MKSQUASHFS_OPTS}
+
+run-scripts:
+		nm target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf > scripts/symbols.table
+		@if [ ! -d "scripts/rustc_demangle" ]; then \
+			echo "Cloning rustc_demangle.py into scripts/rustc_demangle/..."; \
+			git clone "https://github.com/juls0730/rustc_demangle.py" "scripts/rustc_demangle"; \
+		else \
+			echo "Folder scripts/rustc_demangle already exists. Skipping clone."; \
+		fi
+		python scripts/demangle-symbols.py
+		mv scripts/symbols.table ${INITRAMFS_PATH}/
+
+		python scripts/font.py
+		mv scripts/font.psf ${INITRAMFS_PATH}/
 
 copy-iso-files:
 		# Limine files
@@ -99,16 +113,7 @@ else
 		parted -a none ${IMAGE_PATH} set 1 boot on
 endif
 
-build-iso: partition-iso
-		nm target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf > scripts/symbols.table
-	@if [ ! -d "scripts/rustc_demangle" ]; then \
-		echo "Cloning rustc_demangle.py into scripts/rustc_demangle/..."; \
-		git clone "https://github.com/juls0730/rustc_demangle.py" "scripts/rustc_demangle"; \
-	else \
-		echo "Folder scripts/rustc_demangle already exists. Skipping clone."; \
-	fi
-		python scripts/demangle-symbols.py
-		mv scripts/symbols.table ${ISO_PATH}/boot
+build-iso: partition-iso copy-initramfs-files
 ifeq (${ARCH},x86_64)
 		# Install the Limine bootloader for bios installs
 		./limine/limine bios-install ${IMAGE_PATH}

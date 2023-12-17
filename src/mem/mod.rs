@@ -36,6 +36,32 @@ pub static HHDM_OFFSET: Lazy<usize> = Lazy::new(|| {
 pub static PHYSICAL_MEMORY_MANAGER: Lazy<PhysicalMemoryManager> =
     Lazy::new(PhysicalMemoryManager::new);
 
+pub struct PageAllocator;
+
+unsafe impl core::alloc::Allocator for PageAllocator {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        let pages = layout.size() / 4096 + 1;
+        let ptr = PHYSICAL_MEMORY_MANAGER.alloc(pages);
+
+        if ptr.is_err() {
+            return Err(core::alloc::AllocError);
+        }
+
+        let ptr = ptr.unwrap();
+        let slice: &mut [u8] = unsafe { core::slice::from_raw_parts_mut(ptr, pages) };
+
+        unsafe { Ok(core::ptr::NonNull::new_unchecked(slice)) }
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let pages = layout.size() / 4096 + 1;
+
+        PHYSICAL_MEMORY_MANAGER.dealloc(ptr.as_ptr(), pages);
+    }
+}
 pub struct Allocator {
     pub inner: Lazy<BuddyAllocator>,
 }

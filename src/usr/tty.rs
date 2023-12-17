@@ -207,7 +207,7 @@ impl Console {
                     color_code_buffer.push(character);
                 } else {
                     if character == '[' {
-                        // official start of the escape sequence
+                        // official start of the color sequence
                         color_code_buffer.clear();
                         continue;
                     }

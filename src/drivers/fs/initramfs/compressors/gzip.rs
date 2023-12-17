@@ -23,48 +23,63 @@ impl From<u8> for ZlibCompressionLevel {
     }
 }
 
+#[derive(Debug)]
+#[repr(u8)]
+pub enum CompressionErrors {
+    NotDeflate = 0,
+    UnsupportedWindowSize,
+    FCheckFailed,
+    UnsupportedDictionary,
+    FailedChecksum,
+    FailedCompression,
+}
+
 // RFC 1950: "ZLIB Compressed Data Format Specification"
 // RFC 1951: "DEFLATE Compressed Data Format Specification"
-pub fn uncompress_data(bytes: &[u8]) -> Result<Arc<[u8]>, ()> {
+pub fn uncompress_data(bytes: &[u8]) -> Result<Arc<[u8]>, CompressionErrors> {
     assert!(bytes.len() > 2);
 
     // Compression Method and flags
     let cmf = bytes[0];
 
     if (cmf & 0x0F) != 0x08 {
-        panic!("Compression method is not deflate!");
+        return Err(CompressionErrors::NotDeflate);
     }
 
     let window_log2 = cmf >> 4 & 0x0F;
 
     if window_log2 > 0x07 {
-        panic!("Unsupported window size {window_log2:X}!");
+        return Err(CompressionErrors::UnsupportedWindowSize);
     }
 
     let flags = bytes[1];
     if (cmf as u32 * 256 + flags as u32) % 31 != 0 {
-        return Err(());
+        return Err(CompressionErrors::FCheckFailed);
     }
-
-    // TODO: Check if FCheck is valid
 
     let present_dictionary = flags >> 5 & 0x01 != 0;
     let _compression_level: ZlibCompressionLevel = (flags >> 6 & 0x03).into();
 
     if present_dictionary {
         // cry
-        return Err(());
+        return Err(CompressionErrors::UnsupportedDictionary);
     }
 
     let mut inflate_context = InflateContext::new(&bytes[2..bytes.len() - 4]);
 
-    let data = inflate_context.decompress()?;
+    let data = inflate_context.decompress();
 
-    // last 4 bytes
+    if data.is_err() {
+        return Err(CompressionErrors::FailedCompression);
+    }
+
+    let data = data.unwrap();
+
+    // last 4 bytes of zlib data
     let checksum = u32::from_le_bytes(bytes[bytes.len() - 4..].try_into().unwrap());
 
     if adler32(&data) != checksum {
-        return Err(());
+        return Err(CompressionErrors::FailedChecksum);
     }
 
     return Ok(data.into());

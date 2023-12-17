@@ -5,17 +5,19 @@ use core::fmt::{self, Debug};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use limine::ModuleRequest;
 
-use crate::libs::math::ceil;
+use crate::libs::{lazy::Lazy, math::ceil};
 
 use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
 
 pub static MODULE_REQUEST: ModuleRequest = ModuleRequest::new(0);
 
-pub fn init() {
+// TODO: do something better than this shite
+pub static INITRAMFS: Lazy<Squashfs> = Lazy::new(init);
+
+fn init() -> Squashfs<'static> {
     // TODO: Put the module request stuff in another file?
     if MODULE_REQUEST.get_response().get().is_none() {
-        crate::log_error!("Module request in none!");
-        return;
+        panic!("Module request in none!");
     }
     let module_response = MODULE_REQUEST.get_response().get().unwrap();
 
@@ -38,35 +40,24 @@ pub fn init() {
     // End TODO
 
     if initramfs.is_none() {
-        crate::log_error!("Initramfs was not found!");
-        return;
+        panic!("Initramfs was not found!");
     }
     let initramfs = initramfs.unwrap();
 
     let squashfs = Squashfs::new(initramfs.base.as_ptr().unwrap());
 
     if squashfs.is_err() {
-        crate::log_error!("Initramfs in corrupt!");
-        return;
+        panic!("Initramfs in corrupt!");
     }
 
     let squashfs = squashfs.unwrap();
 
-    crate::println!(
-        "\033[92m{:?}",
-        core::str::from_utf8(
-            &squashfs
-                .open("/firstdir/seconddirbutlonger/yeah.txt")
-                .unwrap()
-                .read()
-                .unwrap()
-        )
-    );
+    return squashfs;
 }
 
 #[repr(C)]
 #[derive(Debug)]
-struct Squashfs<'a> {
+pub struct Squashfs<'a> {
     superblock: SquashfsSuperblock,
     data_table: &'a [u8],
     inode_table: &'a [u8],
@@ -79,7 +70,7 @@ struct Squashfs<'a> {
 
 impl Squashfs<'_> {
     fn new(ptr: *mut u8) -> Result<Squashfs<'static>, ()> {
-        crate::log_info!("Parsing initramfs at {:p}", ptr);
+        // crate::log_info!("Parsing initramfs at {:p}", ptr);
 
         // 40 is the offset for bytes used by the archive in the superblock
         let length = unsafe { u64::from_le(*(ptr.add(40) as *const u64)) as usize };
@@ -241,7 +232,7 @@ impl Squashfs<'_> {
             panic!("Inode block is not less than 8KiB!");
         }
 
-        let mut buffer: Vec<u8> = Vec::with_capacity(8192);
+        let mut buffer: Vec<u8> = Vec::new();
 
         if table_is_compressed {
             let bytes = if metadata_block.0 { &table[2..] } else { table };
@@ -492,7 +483,7 @@ impl<'a> VfsFile for BasicFileInode<'a> {
                 as usize;
 
         // TODO: is this really how you're supposed to do this?
-        let mut block_data: Vec<u8> = Vec::with_capacity(8192 * block_count);
+        let mut block_data: Vec<u8> = Vec::with_capacity(self.file_size as usize);
 
         unsafe {
             let data_table = self.header.squashfs.get_decompressed_table(

@@ -1,5 +1,7 @@
 use alloc::{borrow::ToOwned, string::String, vec::Vec};
 
+use crate::drivers::fs::vfs::VfsFileSystem;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct StackFrame {
@@ -35,17 +37,7 @@ pub fn print_stack_trace(max_frames: usize, rbp: u64) {
 }
 
 fn get_function_name(function_address: u64) -> Result<(String, u64), ()> {
-    if crate::drivers::fs::vfs::VFS_INSTANCES
-        .lock()
-        .read()
-        .is_empty()
-    {
-        return Err(());
-    }
-
-    let vfs_lock = crate::drivers::fs::vfs::VFS_INSTANCES.lock();
-
-    let symbols_fd = vfs_lock.read()[0].open("/boot/symbols.table")?;
+    let symbols_fd = (*crate::drivers::fs::initramfs::INITRAMFS).open("/symbols.table")?;
 
     let symbols_table_bytes = symbols_fd.read()?;
     let symbols_table = core::str::from_utf8(&symbols_table_bytes).ok().ok_or(())?;

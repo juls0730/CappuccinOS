@@ -35,16 +35,16 @@ pub fn put_char(
     bg: u32,
     mirror_buffer: Option<Framebuffer>,
 ) {
-    let font = font::G_8X16_FONT;
-    let font_width = 8;
-    let font_height = 16;
+    let font = &font::FONT;
+    let font_width = font.header.width;
+    let font_height = font.header.height;
 
     if character as usize > u8::MAX as usize {
         character = '\x00'; // rounded question mark
         fg = 0xFF0000;
     }
 
-    let character_array = font[character as usize];
+    let character_array = &font.data[character as usize];
 
     let framebuffer =
         get_framebuffer().expect("Tried to use framebuffer, but framebuffer was not found");
@@ -53,9 +53,10 @@ pub fn put_char(
     let start_y = cy * font_height as u16;
 
     for (row_idx, &character_byte) in character_array.iter().enumerate() {
-        let mut byte = vec![bg; font_width];
+        let mut byte = vec![bg; font_width as usize];
         for (i, bit) in byte.iter_mut().enumerate() {
-            *bit = [bg, fg][((character_byte >> ((font_width - 1) - i)) & 0b00000001) as usize]
+            *bit = [bg, fg]
+                [((character_byte >> ((font_width as usize - 1) - i)) & 0b00000001) as usize]
         }
 
         let row_start_offset = (start_y as usize + row_idx) * framebuffer.pitch
