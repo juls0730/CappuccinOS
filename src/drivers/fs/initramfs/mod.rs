@@ -228,9 +228,9 @@ impl Squashfs<'_> {
         };
         let table_size = header & 0x7FFF;
 
-        if table.len() >= 8192 {
-            panic!("Inode block is not less than 8KiB!");
-        }
+        // if table.len() >= 8192 {
+        //     panic!("Inode block is not less than 8KiB!");
+        // }
 
         let mut buffer: Vec<u8> = Vec::new();
 
@@ -485,22 +485,22 @@ impl<'a> VfsFile for BasicFileInode<'a> {
         // TODO: is this really how you're supposed to do this?
         let mut block_data: Vec<u8> = Vec::with_capacity(self.file_size as usize);
 
-        unsafe {
-            let data_table = self.header.squashfs.get_decompressed_table(
-                self.header.squashfs.data_table,
-                (
-                    false,
-                    Some(
-                        !self
-                            .header
-                            .squashfs
-                            .superblock
-                            .features()
-                            .uncompressed_data_blocks,
-                    ),
+        let data_table = self.header.squashfs.get_decompressed_table(
+            self.header.squashfs.data_table,
+            (
+                false,
+                Some(
+                    !self
+                        .header
+                        .squashfs
+                        .superblock
+                        .features()
+                        .uncompressed_data_blocks,
                 ),
-            );
+            ),
+        );
 
+        unsafe {
             core::ptr::copy_nonoverlapping(
                 data_table.as_ptr().add(self.block_offset as usize),
                 block_data.as_mut_ptr(),

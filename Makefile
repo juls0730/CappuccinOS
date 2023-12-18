@@ -25,10 +25,17 @@ ifeq (${ARCH},riscv64)
 	UEFI := true
 endif
 
+ifeq (${ARCH},aarch64)
+	LIMINE_BOOT_VARIATION := AA64
+	UEFI := true
+endif
+
 ifneq (${UEFI},)
 	RUN_OPTS := ovmf-${ARCH}
 	ifeq (${ARCH},riscv64)
 		QEMU_OPTS += -drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-riscv64/OVMF.fd -M virt
+	else ifeq (${ARCH},aarch64)
+		QEMU_OPTS += -M virt -bios ovmf/ovmf-${ARCH}/OVMF.fd
 	else
 		QEMU_OPTS += -bios ovmf/ovmf-${ARCH}/OVMF.fd
 	endif
@@ -148,6 +155,12 @@ ovmf-riscv64: ovmf
 		cd ovmf/ovmf-riscv64 && curl -o OVMF.fd https://retrage.github.io/edk2-nightly/bin/RELEASERISCV64_VIRT_CODE.fd && dd if=/dev/zero of=OVMF.fd bs=1 count=0 seek=33554432; \
 	fi
 
+ovmf-aarch64:
+	mkdir -p ovmf/ovmf-aarch64
+	@if [ ! -d "ovmf/ovmf-aarch64/OVMF.fd" ]; then \
+		cd ovmf/ovmf-aarch64 && curl -o OVMF.fd https://retrage.github.io/edk2-nightly/bin/RELEASEAARCH64_QEMU_EFI.fd; \
+	fi
+
 # In debug mode, open a terminal and run this command:
 # gdb target/x86_64-unknown-none/debug/CappuccinOS.elf -ex "target remote :1234"
 
@@ -157,7 +170,10 @@ run-x86_64:
 	qemu-system-x86_64 ${QEMU_OPTS}
 
 run-riscv64:
-	qemu-system-riscv64 ${QEMU_OPTS} -M virt -cpu rv64 -device ramfb -device qemu-xhci -device usb-kbd -device virtio-scsi-pci,id=scsi -device scsi-hd,drive=hd0
+	qemu-system-riscv64 ${QEMU_OPTS} -cpu rv64 -device ramfb -device qemu-xhci -device usb-kbd -device virtio-scsi-pci,id=scsi -device scsi-hd,drive=hd0
+
+run-aarch64:
+	qemu-system-aarch64 ${QEMU_OPTS} -cpu cortex-a72 -device ramfb -device qemu-xhci -device usb-kbd -boot d
 
 line-count:
 		cloc --quiet --exclude-dir=bin --csv src/ | tail -n 1 | awk -F, '{print $$5}'

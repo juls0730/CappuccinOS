@@ -68,6 +68,4 @@ pub fn write_serial(character: char) {
     unsafe {
         *UART = character;
     };
-
-    return;
 }

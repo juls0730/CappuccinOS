@@ -1,7 +1,10 @@
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 
 use crate::{
-    drivers::fs::{initramfs::INITRAMFS, vfs::VfsFileSystem},
+    drivers::{
+        fs::{initramfs::INITRAMFS, vfs::VfsFileSystem},
+        serial::write_serial,
+    },
     libs::lazy::Lazy,
 };
 
@@ -48,5 +51,6 @@ pub static FONT: Lazy<PSFFont> = Lazy::new(|| {
         .read()
         .unwrap()
         .to_vec();
+
     PSFFont::from_file_data(file_data).expect("Failed to create terminal font!")
 });
