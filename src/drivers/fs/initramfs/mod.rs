@@ -2,10 +2,13 @@ pub mod compressors;
 
 use core::fmt::{self, Debug};
 
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, fmt::format, format, sync::Arc, vec::Vec};
 use limine::ModuleRequest;
 
-use crate::libs::{lazy::Lazy, math::ceil};
+use crate::{
+    drivers::serial::write_serial,
+    libs::{lazy::Lazy, math::ceil},
+};
 
 use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
 
@@ -233,10 +236,9 @@ impl Squashfs<'_> {
         // }
 
         let mut buffer: Vec<u8> = Vec::new();
+        let bytes = if metadata_block.0 { &table[2..] } else { table };
 
         if table_is_compressed {
-            let bytes = if metadata_block.0 { &table[2..] } else { table };
-
             match self.superblock.compressor {
                 SquashfsCompressionType::Gzip => {
                     buffer.extend_from_slice(&compressors::gzip::uncompress_data(bytes).unwrap());
@@ -246,15 +248,7 @@ impl Squashfs<'_> {
                 }
             }
         } else {
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    table.as_ptr().add(2),
-                    buffer.as_mut_ptr(),
-                    table_size as usize,
-                );
-
-                buffer.set_len(table_size as usize);
-            }
+            buffer.extend(bytes);
         }
 
         return buffer;
@@ -500,15 +494,9 @@ impl<'a> VfsFile for BasicFileInode<'a> {
             ),
         );
 
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                data_table.as_ptr().add(self.block_offset as usize),
-                block_data.as_mut_ptr(),
-                self.file_size as usize,
-            );
-
-            block_data.set_len(self.file_size as usize);
-        }
+        block_data.extend(
+            &data_table[self.block_offset as usize..(self.block_offset + self.file_size) as usize],
+        );
 
         return Ok(Arc::from(block_data));
     }

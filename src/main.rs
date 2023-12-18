@@ -17,7 +17,10 @@ use drivers::serial;
 use libs::util::hcf;
 use limine::KernelFileRequest;
 
-use crate::mem::LabelBytes;
+use crate::{
+    drivers::fs::{initramfs::INITRAMFS, vfs::VfsFileSystem},
+    mem::LabelBytes,
+};
 
 pub static KERNEL_REQUEST: KernelFileRequest = KernelFileRequest::new(0);
 
@@ -36,6 +39,8 @@ pub extern "C" fn _start() -> ! {
     drivers::pci::enumerate_pci_bus();
 
     drivers::fs::vfs::init();
+
+    // crate::println!("{:?}", INITRAMFS.open("/font.psf").unwrap().read());
 
     if let Some(kernel) = KERNEL_REQUEST.get_response().get() {
         crate::println!("{:X?}", kernel.kernel_file.get().unwrap().gpt_disk_uuid);
