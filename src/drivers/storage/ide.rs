@@ -1,7 +1,9 @@
+use core::mem::size_of;
+
 use alloc::{boxed::Box, format, sync::Arc, vec::Vec};
 
 use crate::{
-    arch::io::{inb, inw, outb, outw},
+    arch::io::{inb, insw, inw, outb, outsw},
     drivers::{
         fs::fat,
         storage::drive::{GPTBlock, GPTPartitionEntry},
@@ -294,7 +296,7 @@ impl ATABus {
             sector,
             sector_count,
             ATADriveDirection::Read,
-            (buffer.as_mut_ptr(), buffer.len()),
+            &mut buffer,
         )?;
 
         return Ok(Arc::from(buffer));
@@ -311,12 +313,14 @@ impl ATABus {
             return Err(());
         }
 
+        let mut mut_buf: Vec<u8> = Vec::new();
+        mut_buf.extend(buffer);
         self.ide_access(
             drive,
             sector,
             sector_count,
             ATADriveDirection::Write,
-            (buffer.as_ptr() as *mut u8, buffer.len()),
+            &mut mut_buf,
         )?;
 
         return Ok(());
@@ -328,10 +332,8 @@ impl ATABus {
         sector: u64,
         sector_count: usize,
         direction: ATADriveDirection,
-        buffer: (*mut u8, usize),
+        buffer: &mut [u8],
     ) -> Result<(), ()> {
-        let buffer = unsafe { core::slice::from_raw_parts_mut(buffer.0, buffer.1) };
-
         self.await_busy();
 
         let using_lba48 = sector >= (1 << 28) - 1;
@@ -411,29 +413,32 @@ impl ATABus {
         // Since this is an internal function, this should never fail
         assert!(buffer.len() >= array_size);
 
-        // Allocate memory for the array that stores the sector data
         let mut buffer_offset = 0;
         for _ in 0..sector_count {
             self.wait_for_drive_ready()
                 .map_err(|_| crate::log_error!("Error reading IDE Device"))?;
 
-            for chunk in
-                buffer[buffer_offset..(buffer_offset + ATA_SECTOR_SIZE)].chunks_exact_mut(2)
-            {
-                match direction {
-                    ATADriveDirection::Read => {
-                        let word =
-                            inw(self.io_bar + ATADriveDataRegister::Data as u16).to_le_bytes();
-                        chunk.copy_from_slice(&word);
-                    }
-                    ATADriveDirection::Write => {
-                        let word = u16::from_le_bytes(chunk.try_into().unwrap());
-                        outw(self.io_bar + ATADriveDataRegister::Data as u16, word);
-                    }
-                }
+            // # Safety
+            //
+            // We know that buffer is the exact size of count, so it will never panic:tm:
+            match direction {
+                ATADriveDirection::Read => unsafe {
+                    insw(
+                        self.io_bar + ATADriveDataRegister::Data as u16,
+                        (buffer.as_mut_ptr() as *mut u16).add(buffer_offset),
+                        ATA_SECTOR_SIZE / size_of::<u16>(),
+                    );
+                },
+                ATADriveDirection::Write => unsafe {
+                    outsw(
+                        self.io_bar + ATADriveDataRegister::Data as u16,
+                        (buffer.as_mut_ptr() as *mut u16).add(buffer_offset),
+                        ATA_SECTOR_SIZE / size_of::<u16>(),
+                    )
+                },
             }
 
-            buffer_offset += ATA_SECTOR_SIZE;
+            buffer_offset += ATA_SECTOR_SIZE / size_of::<u16>();
         }
 
         return Ok(());

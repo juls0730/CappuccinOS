@@ -1,6 +1,6 @@
-use alloc::{borrow::ToOwned, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 
-use crate::drivers::fs::vfs::VfsFileSystem;
+use crate::drivers::{fs::vfs::VfsFileSystem, serial::write_serial};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -19,8 +19,6 @@ pub fn print_stack_trace(max_frames: usize, rbp: u64) {
         }
 
         let instruction_pointer = unsafe { (*stackframe).rip };
-
-        crate::print!("  {:#X} ", instruction_pointer);
 
         let instrcution_info = get_function_name(instruction_pointer);
 

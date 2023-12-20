@@ -6,6 +6,7 @@ ARCH ?= x86_64
 MEMORY ?= 512M
 QEMU_OPTS ?= 
 MKSQUASHFS_OPTS ?= 
+GDB ?= 
 
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
@@ -16,7 +17,9 @@ LIMINE_BOOT_VARIATION = X64
 
 ifeq (${MODE},release)
 	CARGO_OPTS += --release
-else
+endif
+
+ifneq (${GDB},)
 	QEMU_OPTS += -s -S
 endif
 

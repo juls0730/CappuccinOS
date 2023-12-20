@@ -12,15 +12,12 @@ mod usr;
 
 use core::ffi::CStr;
 
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 use drivers::serial;
 use libs::util::hcf;
 use limine::KernelFileRequest;
 
-use crate::{
-    drivers::fs::{initramfs::INITRAMFS, vfs::VfsFileSystem},
-    mem::LabelBytes,
-};
+use crate::{drivers::serial::write_serial, mem::LabelBytes};
 
 pub static KERNEL_REQUEST: KernelFileRequest = KernelFileRequest::new(0);
 
@@ -120,7 +117,11 @@ fn parse_kernel_cmdline() -> KernelFeatures {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    crate::log_error!("{}", info);
+    let message = format!("{}", info);
+
+    for ch in message.chars() {
+        write_serial(ch);
+    }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {

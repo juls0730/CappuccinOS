@@ -37,7 +37,6 @@ pub fn outw(port: u16, value: u16) {
             options(preserves_flags, nomem, nostack)
         );
     }
-    return;
 }
 
 #[inline(always)]
@@ -82,7 +81,7 @@ pub unsafe fn outsw(port: u16, buffer: *mut u16, count: usize) {
         asm!("cld",
             "rep outsw",
             in("dx") port,
-            inout("rdi") buffer => _,
+            inout("rsi") buffer => _,
             inout("rcx") count => _
         );
     }
@@ -98,7 +97,6 @@ pub fn outl(port: u16, value: u32) {
             options(preserves_flags, nomem, nostack)
         );
     }
-    return;
 }
 
 #[inline(always)]

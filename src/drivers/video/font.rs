@@ -1,13 +1,11 @@
-use alloc::{format, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::{
-    drivers::{
-        fs::{initramfs::INITRAMFS, vfs::VfsFileSystem},
-        serial::write_serial,
-    },
+    drivers::fs::{initramfs::INITRAMFS, vfs::VfsFileSystem},
     libs::lazy::Lazy,
 };
 
+#[derive(Debug)]
 pub struct PSFFontHeader {
     pub magic: u32,
     pub length: u32,

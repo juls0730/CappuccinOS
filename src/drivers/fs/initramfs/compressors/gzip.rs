@@ -145,6 +145,9 @@ impl InflateContext {
         };
     }
 
+    // read from right-to-left NOT, and I cannot stress this enough, left-to-right
+    // probably because it's way simpler computationally to get the right-most bit,
+    // but still, wasted weeks on this because I read it from left-to-right ;~;
     pub fn get_bit(&mut self) -> bool {
         if self.bit_index == 8 {
             self.input_buf.remove(0);

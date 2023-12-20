@@ -2,12 +2,12 @@ pub mod compressors;
 
 use core::fmt::{self, Debug};
 
-use alloc::{boxed::Box, fmt::format, format, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use limine::ModuleRequest;
 
-use crate::{
-    drivers::serial::write_serial,
-    libs::{lazy::Lazy, math::ceil},
+use crate::libs::{
+    lazy::Lazy,
+    math::{ceil, floor},
 };
 
 use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
@@ -62,6 +62,7 @@ fn init() -> Squashfs<'static> {
 #[derive(Debug)]
 pub struct Squashfs<'a> {
     superblock: SquashfsSuperblock,
+    start: *mut u8,
     data_table: &'a [u8],
     inode_table: &'a [u8],
     directory_table: &'a [u8],
@@ -163,6 +164,7 @@ impl Squashfs<'_> {
 
         return Ok(Squashfs {
             superblock,
+            start: ptr,
             data_table,
             inode_table,
             directory_table,
@@ -396,14 +398,14 @@ impl<'a> BasicDirectoryInode<'a> {
         let mut offset = self.block_offset as usize + core::mem::size_of::<DirectoryTableHeader>();
 
         for _ in 0..directory_table_header.entry_count as usize {
-            let directroy_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
+            let directory_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
 
-            offset += 8 + directroy_table_entry.name.len();
+            offset += 8 + directory_table_entry.name.len();
 
             let file_inode = self
                 .header
                 .squashfs
-                .read_inode(directroy_table_entry.offset as u32);
+                .read_inode(directory_table_entry.offset as u32);
 
             entries.push(file_inode);
         }
@@ -424,15 +426,15 @@ impl<'a> BasicDirectoryInode<'a> {
         let mut offset = self.block_offset as usize + core::mem::size_of::<DirectoryTableHeader>();
 
         for _ in 0..directory_table_header.entry_count as usize {
-            let directroy_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
+            let directory_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
 
-            offset += 8 + directroy_table_entry.name.len();
+            offset += 8 + directory_table_entry.name.len();
 
-            if directroy_table_entry.name == name {
+            if directory_table_entry.name == name {
                 return Some(
                     self.header
                         .squashfs
-                        .read_inode(directroy_table_entry.offset as u32),
+                        .read_inode(directory_table_entry.offset as u32),
                 );
             }
         }
@@ -449,6 +451,7 @@ struct BasicFileInode<'a> {
     frag_idx: u32,     // 8
     block_offset: u32, // 12
     file_size: u32,    // 16
+    block_sizes: *const u32,
 }
 
 impl<'a> BasicFileInode<'a> {
@@ -458,6 +461,7 @@ impl<'a> BasicFileInode<'a> {
         let frag_idx = u32::from_le_bytes(bytes[20..24].try_into().unwrap());
         let block_offset = u32::from_le_bytes(bytes[24..28].try_into().unwrap());
         let file_size = u32::from_le_bytes(bytes[28..32].try_into().unwrap());
+        let block_sizes = bytes[32..].as_ptr() as *const u32;
 
         return Self {
             header,
@@ -465,38 +469,101 @@ impl<'a> BasicFileInode<'a> {
             frag_idx,
             block_offset,
             file_size,
+            block_sizes,
         };
     }
 }
 
 impl<'a> VfsFile for BasicFileInode<'a> {
     fn read(&self) -> Result<Arc<[u8]>, ()> {
-        // TODO: handle tail end packing (somehow?)
-        let block_count =
-            ceil(self.file_size as f64 / self.header.squashfs.superblock.block_size as f64)
-                as usize;
-
         // TODO: is this really how you're supposed to do this?
         let mut block_data: Vec<u8> = Vec::with_capacity(self.file_size as usize);
 
-        let data_table = self.header.squashfs.get_decompressed_table(
-            self.header.squashfs.data_table,
-            (
-                false,
-                Some(
-                    !self
-                        .header
-                        .squashfs
-                        .superblock
-                        .features()
-                        .uncompressed_data_blocks,
-                ),
-            ),
-        );
+        let data_table: Vec<u8>;
 
-        block_data.extend(
-            &data_table[self.block_offset as usize..(self.block_offset + self.file_size) as usize],
-        );
+        let block_offset = if self.frag_idx == u32::MAX {
+            data_table = self.header.squashfs.get_decompressed_table(
+                self.header.squashfs.data_table,
+                (
+                    false,
+                    Some(
+                        !self
+                            .header
+                            .squashfs
+                            .superblock
+                            .features()
+                            .uncompressed_data_blocks,
+                    ),
+                ),
+            );
+
+            self.block_offset as usize
+        } else {
+            // Tail end packing
+            let fragment_table = self.header.squashfs.get_decompressed_table(
+                self.header.squashfs.fragment_table.unwrap(),
+                (
+                    false,
+                    Some(false), // Some(
+                                 //     !self
+                                 //         .header
+                                 //         .squashfs
+                                 //         .superblock
+                                 //         .features()
+                                 //         .uncompressed_fragments,
+                                 // ),
+                ),
+            );
+
+            let fragment_pointer = (self.header.squashfs.start as u64
+                + u64::from_le_bytes(
+                    fragment_table[self.frag_idx as usize..(self.frag_idx + 8) as usize]
+                        .try_into()
+                        .unwrap(),
+                )) as *mut u8;
+
+            // build array since fragment_pointer is not guaranteed to be 0x02 aligned
+            // We add two since fragment_pointer points to the beginning of the fragment block,
+            // Which is a metadata block, and we get the size, but that excludes the two header bytes,
+            // And since we are building the array due to unaligned pointer shenanigans we need to
+            // include the header bytes otherwise we are short by two bytes
+            let fragment_block_size = unsafe {
+                u16::from_le(core::ptr::read_unaligned(fragment_pointer as *mut u16)) & 0x7FFF
+            } + 2;
+
+            let mut fragment_block_raw = Vec::new();
+            for i in 0..fragment_block_size as usize {
+                fragment_block_raw
+                    .push(unsafe { core::ptr::read_unaligned(fragment_pointer.add(i)) })
+            }
+
+            let fragment_block = self
+                .header
+                .squashfs
+                .get_decompressed_table(&fragment_block_raw, (true, None));
+
+            let fragment_start = u64::from_le_bytes(fragment_block[0..8].try_into().unwrap());
+            let fragment_size = u32::from_le_bytes(fragment_block[8..12].try_into().unwrap());
+            let fragment_compressed = fragment_size & 1 << 24 == 0;
+            let fragment_size = fragment_size & 0xFEFFFFFF;
+
+            let data_table_raw = unsafe {
+                core::slice::from_raw_parts(
+                    (self.header.squashfs.start as u64 + fragment_start) as *mut u8,
+                    fragment_size as usize,
+                )
+                .to_vec()
+            };
+
+            data_table = self
+                .header
+                .squashfs
+                .get_decompressed_table(&data_table_raw, (false, Some(fragment_compressed)));
+
+            self.block_offset as usize
+        };
+
+        block_data.extend(&data_table[block_offset..(block_offset + self.file_size as usize)]);
 
         return Ok(Arc::from(block_data));
     }
