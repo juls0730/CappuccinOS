@@ -211,9 +211,7 @@ impl Squashfs<'_> {
                     &inode_table[inode_offset..],
                 ));
             }
-            _ => {
-                panic!("Unsupported or unknown inode file type {inode_file_type:?}!")
-            }
+            _ => panic!("Unsupported or unknown inode file type {inode_file_type:?}!"),
         };
     }
 

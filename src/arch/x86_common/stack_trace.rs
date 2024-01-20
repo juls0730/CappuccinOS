@@ -20,6 +20,8 @@ pub fn print_stack_trace(max_frames: usize, rbp: u64) {
 
         let instruction_pointer = unsafe { (*stackframe).rip };
 
+        crate::print!("  {:#X} ", instruction_pointer);
+
         let instrcution_info = get_function_name(instruction_pointer);
 
         if let Ok((function_name, function_offset)) = instrcution_info {

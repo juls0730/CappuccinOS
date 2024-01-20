@@ -238,12 +238,13 @@ impl InflateContext {
         }
 
         self.ring.data[self.ring.pointer] = byte;
-        self.output_buf.push(byte);
         self.ring.pointer += 1;
+        self.output_buf.push(byte);
     }
 
     fn peek(&mut self, offset: usize) -> u8 {
-        self.ring.data[(self.ring.pointer - offset) % 32768]
+        let index = (self.ring.pointer as usize).wrapping_sub(offset as usize) % 32768;
+        self.ring.data[index]
     }
 
     fn uncompressed(&mut self) -> Result<(), ()> {

@@ -23,11 +23,13 @@ CappuccinOS is a small x86-64 operating system written from scratch in rust. Thi
     - [ ] x86 CPU support
     - [ ] armv8 CPU support
 - [ ] File system
-  - [ ] Block Device support
-    - [X] IDE device support
-    - [ ] SATA device support
-    - [ ] MMC/Nand device support
-    - [ ] M.2 NVME device support
+    - [X] FAT file system (read-only rn)
+    - [ ] Ext2 file system
+- [ ] Block Device support
+  - [X] IDE device support
+  - [ ] SATA device support
+  - [ ] MMC/Nand device support
+  - [ ] M.2 NVME device support
 - [ ] Basic shell
   - [X] Basic I/O
     - [ ] Executing Programs from disk
@@ -112,10 +114,11 @@ Some Resources I used over the creation of CappuccinOS:
 - Wikipedia on various random things
 - [Squashfs Binary Format](https://dr-emann.github.io/squashfs/squashfs.html)
 
-And mostly for examples of how people did stuff I used these (projects made by people who actually have a clue what they're doing):
+And mostly for examples of how people did stuff I used these (projects made by people who might actually have a clue what they're doing):
 - [MOROS](https://github.com/vinc/moros)
 - [Felix](https://github.com/mrgian/felix)
 - [mOS](https://github.com/Moldytzu/mOS)
+- [rust_os](https://github.com/thepowersgang/rust_os/tree/master)
 
 ## License
 CappuccinOS is license under the MIT License. Feel free to modify and distribute in accordance with the license.

@@ -90,6 +90,20 @@ pub static ALLOCATOR: Allocator = Allocator {
     }),
 };
 
+#[no_mangle]
+pub extern "C" fn malloc(size: usize) -> *mut u8 {
+    let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+    unsafe { ALLOCATOR.alloc(layout) }
+}
+
+#[no_mangle]
+pub extern "C" fn free(ptr: *mut u8, size: usize) {
+    let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+    unsafe {
+        ALLOCATOR.dealloc(ptr, layout);
+    }
+}
+
 pub fn log_info() {
     crate::log_info!(
         "Initialized heap with {} of memory at {:#X}",

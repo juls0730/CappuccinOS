@@ -4,9 +4,12 @@ ISO_PARTITION_TYPE ?= GPT
 MODE ?= release
 ARCH ?= x86_64
 MEMORY ?= 512M
+# In MB
+ISO_SIZE ?= 256
 QEMU_OPTS ?= 
 MKSQUASHFS_OPTS ?= 
 GDB ?= 
+ESP_BITS ?= 16
 
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
@@ -62,6 +65,7 @@ prepare-bin-files:
 		mkdir -p ${ARTIFACTS_PATH}
 		mkdir -p ${ISO_PATH}
 		mkdir -p ${INITRAMFS_PATH}
+		mkdir -p ${ARTIFACTS_PATH}/mnt
 
 copy-initramfs-files:
 		echo "Hello World from Initramfs" > ${INITRAMFS_PATH}/example.txt
@@ -87,6 +91,8 @@ run-scripts:
 		python scripts/font.py
 		mv scripts/font.psf ${INITRAMFS_PATH}/
 
+		# python scripts/initramfs-test.py 1000 ${INITRAMFS_PATH}/
+
 copy-iso-files:
 		# Limine files
 		mkdir -p ${ISO_PATH}/boot/limine
@@ -109,19 +115,20 @@ copy-iso-files:
 
 partition-iso: copy-iso-files
 		# Make empty ISO of 64M in size
-		dd if=/dev/zero of=${IMAGE_PATH} bs=1M count=0 seek=64
+		dd if=/dev/zero of=${IMAGE_PATH} bs=1M count=0 seek=${ISO_SIZE}
 ifeq (${ISO_PARTITION_TYPE},GPT)
-		# Make ISO a GPT disk with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
-		# Then a second partition spanning the rest of the disk
-		sgdisk ${IMAGE_PATH} -n 1:2048:+32768 -t 1:ef00 -n 2
+		parted -s ${IMAGE_PATH} mklabel gpt
+		parted -s ${IMAGE_PATH} mkpart ESP fat${ESP_BITS} 2048s 34815s
+
 else
-		# Make ISO a MBR disk with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
-		# Then a second partition spanning the rest of the disk
-		parted -a none ${IMAGE_PATH} mklabel msdos
-		parted -a none ${IMAGE_PATH} mkpart primary 2048s 34815s
-		parted -a none ${IMAGE_PATH} mkpart primary 34816s 100%
-		parted -a none ${IMAGE_PATH} set 1 boot on
+		parted -s ${IMAGE_PATH} mklabel msdos
+		parted -s ${IMAGE_PATH} mkpart primary fat${ESP_BITS} 2048s 34815s
 endif
+
+		# Make ISO with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
+		# Then a second partition spanning the rest of the disk
+		parted -s ${IMAGE_PATH} mkpart primary 34816s 100%
+		parted -s ${IMAGE_PATH} set 1 esp on
 
 build-iso: partition-iso copy-initramfs-files
 ifeq (${ARCH},x86_64)
@@ -129,15 +136,19 @@ ifeq (${ARCH},x86_64)
 		./limine/limine bios-install ${IMAGE_PATH}
 endif
 
-		# Make a FAT32 FS and copy files in /bin/iso_root into the ISO starting at 1M or exactly 2048 sectors
-		mformat -F -i ${IMAGE_PATH}@@1M
-		mmd -i ${IMAGE_PATH}@@1M ::/EFI ::/EFI/BOOT
-		mcopy -i ${IMAGE_PATH}@@1M -s ${ISO_PATH}/* ::/
+		sudo losetup -Pf --show ${IMAGE_PATH} > loopback_dev
+		sudo mkfs.fat -F ${ESP_BITS} `cat loopback_dev`p1
+		sudo mount `cat loopback_dev`p1 ${ARTIFACTS_PATH}/mnt
+		sudo cp -r ${ISO_PATH}/* ${ARTIFACTS_PATH}/mnt
+		sync
+		sudo umount ${ARTIFACTS_PATH}/mnt
+		sudo losetup -d `cat loopback_dev`
+		rm -rf loopback_dev
 
 compile-bootloader:
 	@if [ ! -d "limine" ]; then \
 		echo "Cloning Limine into limine/..."; \
-		git clone https://github.com/limine-bootloader/limine.git --branch=v5.x-branch-binary --depth=1; \
+		git clone https://github.com/limine-bootloader/limine.git --branch=v6.x-branch-binary --depth=1; \
 	else \
 		echo "Folder limine already exists. Skipping clone."; \
 	fi
@@ -182,5 +193,5 @@ line-count:
 		cloc --quiet --exclude-dir=bin --csv src/ | tail -n 1 | awk -F, '{print $$5}'
 clean:
 		cargo clean
-		rm -rf bin
+		rm -rf ${ARTIFACTS_PATH}
 		make clean -C limine

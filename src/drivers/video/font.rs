@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::{
     drivers::fs::{initramfs::INITRAMFS, vfs::VfsFileSystem},
-    libs::lazy::Lazy,
+    libs::{lazy::Lazy, mutex::Mutex},
 };
 
 #[derive(Debug)]

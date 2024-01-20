@@ -8,7 +8,8 @@ use alloc::{
 };
 
 use crate::{
-    libs::{lazy::Lazy, mutex::Mutex},
+    drivers::{fs::vfs::VFS_INSTANCES, serial::write_serial},
+    libs::{elf::load_elf, lazy::Lazy, mutex::Mutex},
     mem::LabelBytes,
 };
 
@@ -781,7 +782,28 @@ pub fn exec(command: &str) {
         return;
     }
 
-    println!("{:?} {:?}", command, args);
+    // TODO: check a path and not just /bin/
+    if let Ok(program) = VFS_INSTANCES.lock().read()[0].open(&format!("/bin/{}", command)) {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            let program_bytes = program.read().expect("Failed to read program!");
+            let program_elf = match load_elf(&program_bytes) {
+                Ok(elf) => elf,
+                Err(_) => {
+                    println!("Command not found: {command} (err)");
+                    return;
+                }
+            };
+            crate::arch::push_gprs();
+
+            // execute program
+            crate::println!("{program_elf:?}");
+
+            crate::arch::pop_gprs();
+        }
+    } else {
+        println!("Command not found: {command}");
+    }
 }
 
 fn parse_input(input: &str) -> (String, Vec<String>) {

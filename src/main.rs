@@ -30,7 +30,7 @@ pub extern "C" fn _start() -> ! {
 
     mem::log_info();
 
-    // drivers::acpi::init_acpi();
+    drivers::acpi::init_acpi();
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     drivers::pci::enumerate_pci_bus();
@@ -117,11 +117,13 @@ fn parse_kernel_cmdline() -> KernelFeatures {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    let message = format!("{}", info);
+    let message = format!("{}\n", info);
 
     for ch in message.chars() {
         write_serial(ch);
     }
+
+    log_error!("{}", info);
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {

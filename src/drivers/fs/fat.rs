@@ -5,7 +5,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::drivers::storage::drive::{BlockDevice, GPTPartitionEntry};
+use crate::drivers::storage::{BlockDevice, GPTPartitionEntry};
 
 use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
 
@@ -15,19 +15,23 @@ use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
 //
 // Fat Clusters are either one of these types:
 //
-// 0x0FFFFFF8 : End Of cluster Chain
-// 0x0FFFFFF7 : Bad Cluster
-// 0x00000001 - 0x0FFFFFEF : In use Cluster
-// 0x00000000 : Free Cluster
+// |     fat12     |      fat16      |          fat32          |          Description          |
+// |---------------|-----------------|-------------------------|-------------------------------|
+// |  0xFF8-0xFFF  |  0xFFF8-0xFFFF  |  0x0FFFFFF8-0x0FFFFFFF  | End Of cluster Chain          |
+// |  0xFF7        |  0xFFF7         |  0x0FFFFFF7             | Bad Cluster                   |
+// |  0x002-0xFEF  |  0x0002-0xFFEF  |  0x00000002-0x0FFFFFEF  | In use Cluster                |
+// |  0x000        |  0x0000         |  0x00000000             | Free Cluster                  |
 
 // End Of Chain
-const EOC: u32 = 0x0FFFFFF8;
+const EOC_12: u32 = 0x0FF8;
+const EOC_16: u32 = 0xFFF8;
+const EOC_32: u32 = 0x0FFFFFF8;
 
 #[derive(Clone, Copy, Debug)]
 enum FatType {
-    Fat12,
-    Fat16,
-    Fat32,
+    Fat12(Fat16EBPB),
+    Fat16(Fat16EBPB),
+    Fat32(Fat32EBPB),
 }
 
 #[repr(C, packed)]
@@ -47,10 +51,24 @@ pub struct BIOSParameterBlock {
     pub head_count: u16,           // 10 00 (16)
     pub hidden_sectors: u32,       // 00 00 00 00
     pub large_sector_count: u32,   // 00 F8 01 00 (129024)
-    // pub ebpb: [u8; 54],
-    // ---------------------------------
-    // - Extended BIOS Parameter Block -
-    // ---------------------------------
+    pub ebpb_bytes: [u8; 54],
+}
+
+// Fat 12 and Fat 16 EBPB
+#[repr(C, packed)]
+#[derive(Clone, Copy, Debug)]
+pub struct Fat16EBPB {
+    pub drive_number: u8,
+    _reserved: u8,
+    pub signature: u8,
+    pub volume_id: u32,
+    pub volume_label: [u8; 11],
+    pub system_identifier_string: [u8; 8],
+}
+
+#[repr(C, packed)]
+#[derive(Clone, Copy, Debug)]
+pub struct Fat32EBPB {
     pub sectors_per_fat_ext: u32,          // E1 03 00 00 (993, wtf)
     pub flags: [u8; 2],                    // 00 00
     pub fat_version: u16,                  // 00 00
@@ -64,15 +82,12 @@ pub struct BIOSParameterBlock {
     pub volume_id: u32,                    // Varies
     pub volume_label: [u8; 11],            // "NO NAME    "
     pub system_identifier_string: [u8; 8], // Always "FAT32   " but never trust the contents of this string (for some reason)
-    _boot_code: [u8; 420],                 // ~~code~~
-    pub bootable_signature: u16,           // 0xAA55
 }
 
 #[repr(C, packed)]
 #[derive(Debug)]
 pub struct FSInfo {
     pub lead_signature: u32,
-    _reserved: [u8; 480],
     pub mid_signature: u32,
     pub last_known_free_cluster: u32,
     pub look_for_free_clusters: u32,
@@ -83,7 +98,6 @@ pub struct FSInfo {
 impl FSInfo {
     pub fn from_bytes(bytes: Arc<[u8]>) -> Self {
         let lead_signature = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
-        let _reserved = bytes[4..484].try_into().unwrap();
         let mid_signature = u32::from_le_bytes(bytes[484..488].try_into().unwrap());
         let last_known_free_cluster = u32::from_le_bytes(bytes[488..492].try_into().unwrap());
         let look_for_free_clusters = u32::from_le_bytes(bytes[492..496].try_into().unwrap());
@@ -92,7 +106,6 @@ impl FSInfo {
 
         return Self {
             lead_signature,
-            _reserved,
             mid_signature,
             last_known_free_cluster,
             look_for_free_clusters,
@@ -150,7 +163,7 @@ pub struct FatFs<'a> {
     drive: &'a dyn BlockDevice,
     partition: GPTPartitionEntry,
     // FAT info
-    fs_info: FSInfo,
+    fs_info: Option<FSInfo>,
     fat: Option<Arc<[u32]>>,
     bpb: BIOSParameterBlock,
     fat_start: u64,
@@ -165,56 +178,12 @@ impl<'a> FatFs<'a> {
             .read(partition.start_sector, 1)
             .expect("Failed to read FAT32 BIOS Parameter Block!");
 
-        let bpb = unsafe { *(bpb_bytes.clone().as_ptr() as *const BIOSParameterBlock) };
-
-        let system_identifier = core::str::from_utf8(&bpb.system_identifier_string);
-
-        if system_identifier.is_err() {
-            return Err(());
-        }
-
-        // We're trusting it
-        if let Ok(system_identifier_string) = system_identifier {
-            if !system_identifier_string.contains("FAT32") {
-                return Err(());
-            }
-        }
-
-        let fsinfo_bytes = drive
-            .read(partition.start_sector + bpb.fsinfo_sector as u64, 1)
-            .expect("Failed to read FSInfo sector!");
-
-        let fs_info = FSInfo::from_bytes(fsinfo_bytes);
-
-        let fat_start = partition.start_sector + bpb.reserved_sectors as u64;
-
-        let bytes_per_fat = 512 * bpb.sectors_per_fat_ext as usize;
-
-        let mut fat: Option<Arc<[u32]>> = None;
-
-        if crate::KERNEL_FEATURES.fat_in_mem {
-            let mut fat_vec: Vec<u32> = Vec::with_capacity(bytes_per_fat / 4);
-
-            for i in 0..(bpb.sectors_per_fat_ext as usize) {
-                let sector = drive
-                    .read(fat_start + i as u64, 1)
-                    .expect("Failed to read FAT");
-                for j in 0..(512 / 4) {
-                    fat_vec.push(u32::from_le_bytes(
-                        sector[j * 4..(j * 4 + 4)].try_into().unwrap(),
-                    ))
-                }
-            }
-
-            fat = Some(Arc::from(fat_vec));
-        } else {
-            crate::log_info!(
-                "\033[33mWARNING\033[0m: FAT is not being stored in memory, this feature is experimental and file reads are expected to be slower."
-            )
-        }
+        let bpb = unsafe { *(bpb_bytes.as_ptr().cast::<BIOSParameterBlock>()) };
 
         let (total_sectors, fat_size) = if bpb.total_sectors == 0 {
-            (bpb.large_sector_count, bpb.sectors_per_fat_ext)
+            (bpb.large_sector_count, unsafe {
+                (*bpb.ebpb_bytes.as_ptr().cast::<Fat32EBPB>()).sectors_per_fat_ext
+            })
         } else {
             (bpb.total_sectors as u32, bpb.sectors_per_fat as u32)
         };
@@ -229,19 +198,103 @@ impl<'a> FatFs<'a> {
         let total_clusters = total_data_sectors / bpb.sectors_per_cluster as u32;
 
         let fat_type = if total_clusters < 4085 {
-            FatType::Fat12
+            FatType::Fat12(unsafe { *bpb.ebpb_bytes.as_ptr().cast::<Fat16EBPB>() })
         } else if total_clusters < 65525 {
-            FatType::Fat16
+            FatType::Fat16(unsafe { *bpb.ebpb_bytes.as_ptr().cast::<Fat16EBPB>() })
         } else {
-            FatType::Fat32
+            FatType::Fat32(unsafe { *bpb.ebpb_bytes.as_ptr().cast::<Fat32EBPB>() })
         };
 
-        crate::println!("Found {fat_type:?} FS");
+        let system_ident = match fat_type {
+            FatType::Fat12(ebpb) => ebpb.system_identifier_string,
+            FatType::Fat16(ebpb) => ebpb.system_identifier_string,
+            FatType::Fat32(ebpb) => ebpb.system_identifier_string,
+        };
+
+        let system_identifier = core::str::from_utf8(&system_ident);
+
+        if system_identifier.is_err() {
+            return Err(());
+        }
+
+        if let Ok(system_identifier_string) = system_identifier {
+            match fat_type {
+                FatType::Fat12(_) => {
+                    if !system_identifier_string.contains("FAT12") {
+                        return Err(());
+                    }
+                }
+                FatType::Fat16(_) => {
+                    if !system_identifier_string.contains("FAT16") {
+                        return Err(());
+                    }
+                }
+                FatType::Fat32(_) => {
+                    if !system_identifier_string.contains("FAT32") {
+                        return Err(());
+                    }
+                }
+            }
+        }
+
+        let fs_info = match fat_type {
+            FatType::Fat32(ebpb) => {
+                let fsinfo_bytes = drive
+                    .read(partition.start_sector + ebpb.fsinfo_sector as u64, 1)
+                    .expect("Failed to read FSInfo sector!");
+
+                Some(FSInfo::from_bytes(fsinfo_bytes))
+            }
+            _ => None,
+        };
+
+        let fat_start = partition.start_sector + bpb.reserved_sectors as u64;
 
         let sectors_per_fat = match fat_type {
-            FatType::Fat32 => bpb.sectors_per_fat_ext as usize,
+            FatType::Fat32(ebpb) => ebpb.sectors_per_fat_ext as usize,
             _ => bpb.sectors_per_fat as usize,
         };
+
+        let bytes_per_fat = 512 * sectors_per_fat;
+
+        let mut fat: Option<Arc<[u32]>> = None;
+
+        if crate::KERNEL_FEATURES.fat_in_mem {
+            let cluster_bytes = match fat_type {
+                FatType::Fat32(_) => 4,
+                _ => 2,
+            };
+
+            let mut fat_vec: Vec<u32> = Vec::with_capacity(bytes_per_fat / cluster_bytes);
+
+            for i in 0..sectors_per_fat {
+                let sector = drive
+                    .read(fat_start + i as u64, 1)
+                    .expect("Failed to read FAT");
+                for j in 0..(512 / cluster_bytes) {
+                    match fat_type {
+                        FatType::Fat32(_) => fat_vec.push(u32::from_le_bytes(
+                            sector[j * cluster_bytes..(j * cluster_bytes + cluster_bytes)]
+                                .try_into()
+                                .unwrap(),
+                        )),
+                        _ => fat_vec.push(u16::from_le_bytes(
+                            sector[j * cluster_bytes..(j * cluster_bytes + cluster_bytes)]
+                                .try_into()
+                                .unwrap(),
+                        ) as u32),
+                    }
+                }
+            }
+
+            fat = Some(Arc::from(fat_vec));
+        } else {
+            crate::log_info!(
+                "\033[33mWARNING\033[0m: FAT is not being stored in memory, this feature is experimental and file reads are expected to be slower."
+            )
+        }
+
+        crate::println!("Found {fat_type:?} FS");
 
         let cluster_size = bpb.sectors_per_cluster as usize * 512;
 
@@ -379,45 +432,66 @@ impl<'a> FatFs<'a> {
             + (self.bpb.fat_count as usize * fat_size)
             + root_dir_sectors as usize;
 
-        return ((cluster - 2) as isize * self.bpb.sectors_per_cluster as isize) as usize
-            + first_data_sector;
+        return ((((cluster.wrapping_sub(2)) as isize)
+            .wrapping_mul(self.bpb.sectors_per_cluster as isize)) as usize)
+            .wrapping_add(first_data_sector);
+    }
+
+    fn sector_to_cluster(&self, sector: usize) -> usize {
+        let fat_size = self.sectors_per_fat;
+        let root_dir_sectors = ((self.bpb.root_directory_count * 32)
+            + (self.bpb.bytes_per_sector - 1))
+            / self.bpb.bytes_per_sector;
+
+        let first_data_sector = self.bpb.reserved_sectors as usize
+            + (self.bpb.fat_count as usize * fat_size)
+            + root_dir_sectors as usize;
+
+        return (((sector).wrapping_sub(first_data_sector))
+            .wrapping_div(self.bpb.sectors_per_cluster as usize))
+        .wrapping_add(2);
     }
 
     fn get_next_cluster(&self, cluster: usize) -> u32 {
         if crate::KERNEL_FEATURES.fat_in_mem {
             return match self.fat_type {
-                FatType::Fat12 => {
-                    todo!();
-                }
-                FatType::Fat16 => {
-                    todo!();
-                }
-                FatType::Fat32 => self.fat.as_ref().unwrap()[cluster] & 0x0FFFFFFF,
+                FatType::Fat12(_) => self.fat.as_ref().unwrap()[cluster] & 0x0FFF,
+                FatType::Fat16(_) => self.fat.as_ref().unwrap()[cluster] & 0xFFFF,
+                FatType::Fat32(_) => self.fat.as_ref().unwrap()[cluster] & 0x0FFFFFFF,
             };
         } else {
             let fat_entry_size = match self.fat_type {
-                FatType::Fat12 => 1, // 12 bits per entry
-                FatType::Fat16 => 2, // 16 bits per entry
-                FatType::Fat32 => 4, // "32" bits per entry
+                FatType::Fat12(_) => 2, // 12 bits per entry
+                FatType::Fat16(_) => 2, // 16 bits per entry
+                FatType::Fat32(_) => 4, // 28S bits per entry
             };
             let entry_offset = cluster * fat_entry_size;
             let entry_offset_in_sector = entry_offset % 512;
 
+            // needs two incase we "straddle a sector"
             let sector_data = self
                 .drive
-                .read(self.fat_start + entry_offset as u64 / 512, 1)
+                .read(self.fat_start + entry_offset as u64 / 512, 2)
                 .expect("Failed to read from FAT!");
 
             match self.fat_type {
-                FatType::Fat12 => {
-                    todo!();
+                FatType::Fat12(_) => {
+                    let cluster_entry_bytes: [u8; 2] = sector_data
+                        [entry_offset_in_sector..entry_offset_in_sector + 2]
+                        .try_into()
+                        .unwrap();
+                    return (u16::from_le_bytes(cluster_entry_bytes) & 0x0FFF) as u32;
                 }
-                FatType::Fat16 => {
-                    todo!();
+                FatType::Fat16(_) => {
+                    let cluster_entry_bytes: [u8; 2] = sector_data
+                        [entry_offset_in_sector..entry_offset_in_sector + 2]
+                        .try_into()
+                        .unwrap();
+                    return (u16::from_le_bytes(cluster_entry_bytes) & 0xFFFF) as u32;
                 }
-                FatType::Fat32 => {
+                FatType::Fat32(_) => {
                     let cluster_entry_bytes: [u8; 4] = sector_data
-                        [entry_offset_in_sector..=entry_offset_in_sector + 3]
+                        [entry_offset_in_sector..entry_offset_in_sector + 4]
                         .try_into()
                         .unwrap();
                     return u32::from_le_bytes(cluster_entry_bytes) & 0x0FFFFFFF;
@@ -430,7 +504,13 @@ impl<'a> FatFs<'a> {
 impl<'a> VfsFileSystem for FatFs<'a> {
     fn open(&self, path: &str) -> Result<Box<dyn VfsFile + '_>, ()> {
         let path_componenets: Vec<&str> = path.trim_start_matches('/').split('/').collect();
-        let mut current_cluster = self.bpb.root_dir_cluster as usize;
+        let mut current_cluster = match self.fat_type {
+            FatType::Fat32(ebpb) => ebpb.root_dir_cluster as usize,
+            _ => self.sector_to_cluster(
+                self.bpb.reserved_sectors as usize
+                    + (self.bpb.fat_count as usize * self.sectors_per_fat),
+            ),
+        };
 
         for path in path_componenets {
             let file_entry: FileEntry = self.find_entry_in_directory(current_cluster, path)?;
@@ -497,8 +577,22 @@ impl<'a> VfsFile for FatFile<'a> {
 
             cluster = self.fat_fs.get_next_cluster(cluster as usize);
 
-            if cluster >= EOC {
-                break;
+            match self.fat_fs.fat_type {
+                FatType::Fat12(_) => {
+                    if cluster >= EOC_12 {
+                        break;
+                    }
+                }
+                FatType::Fat16(_) => {
+                    if cluster >= EOC_16 {
+                        break;
+                    }
+                }
+                FatType::Fat32(_) => {
+                    if cluster >= EOC_32 {
+                        break;
+                    }
+                }
             }
         }
 

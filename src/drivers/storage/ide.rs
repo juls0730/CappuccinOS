@@ -6,12 +6,12 @@ use crate::{
     arch::io::{inb, insw, inw, outb, outsw},
     drivers::{
         fs::fat,
-        storage::drive::{GPTBlock, GPTPartitionEntry},
+        storage::{GPTHeader, GPTPartitionEntry, MBR},
     },
-    libs::mutex::Mutex,
+    libs::{mutex::Mutex, uuid::Uuid},
 };
 
-use super::drive::BlockDevice;
+use super::BlockDevice;
 
 const ATA_SECTOR_SIZE: usize = 512;
 
@@ -564,12 +564,16 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
             (sectors * ATA_SECTOR_SIZE as u64) / 1024 / 1024
         );
 
-        let mbr_sector = drive.read(0, 1).expect("Failed to read first sector");
+        let mbr_sector: MBR = (*drive.read(0, 1).expect("Failed to read first sector")).into();
 
-        let signature: [u8; 2] = mbr_sector[510..].try_into().unwrap();
+        if u16::from_le_bytes(mbr_sector.signature) != 0xAA55 {
+            panic!("MBR is corrupted!");
+        }
 
-        if u16::from_le_bytes(signature[0..2].try_into().unwrap()) != 0xAA55 {
-            panic!("First sector is not MBR");
+        let mbr_partitions = mbr_sector.partitions();
+
+        if mbr_partitions[0].partition_type != 0xEE {
+            panic!("MBR disks are unsupported")
         }
 
         let gpt_sector = drive.read(1, 1).expect("Failed to read sector 2");
@@ -577,14 +581,7 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         let mut array = [0u8; 512];
         array.copy_from_slice(&gpt_sector[..512]);
 
-        let mut signature = [0u8; 8];
-        signature.copy_from_slice(&gpt_sector[0..8]);
-
-        if &signature != b"EFI PART" {
-            panic!("MBR Disk is unsupported!")
-        }
-
-        let gpt = GPTBlock::new(&array);
+        let gpt = GPTHeader::new(&array);
 
         let mut partitions: Vec<GPTPartitionEntry> =
             Vec::with_capacity(gpt.partition_entry_count as usize);
@@ -607,26 +604,23 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         for i in 0..gpt.partition_entry_count {
             let entry_offset = (i * gpt.partition_entry_size) as usize;
 
-            let partition_type_guid: [u8; 16] = partition_sector[entry_offset..entry_offset + 16]
+            let partition_type_guid_bytes: [u8; 16] = partition_sector
+                [entry_offset..entry_offset + 16]
                 .try_into()
                 .unwrap();
 
-            let mut is_zero = true;
+            let partition_type_guid = Uuid::from(partition_type_guid_bytes);
 
-            for &j in partition_type_guid.iter() {
-                if j != 0 {
-                    is_zero = false;
-                }
-            }
-
-            if is_zero {
+            if partition_type_guid == "00000000-0000-0000-0000-000000000000 " {
                 continue;
             }
 
-            let unique_partition_guid: [u8; 16] = partition_sector
+            let unique_partition_guid_bytes: [u8; 16] = partition_sector
                 [entry_offset + 16..entry_offset + 32]
                 .try_into()
                 .unwrap();
+
+            let unique_partition_guid = Uuid::from(unique_partition_guid_bytes);
 
             let start_sector = u64::from_le_bytes(
                 partition_sector[entry_offset + 32..entry_offset + 40]
@@ -661,6 +655,10 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
         }
 
         for &partition in partitions.iter() {
+            if partition.partition_type_guid != "C12A7328-F81F-11D2-BA4B-00A0C93EC93B" {
+                continue;
+            }
+
             let fat_fs = fat::FatFs::new(drive, partition);
 
             if fat_fs.is_err() {
@@ -671,7 +669,7 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
 
             let vfs = crate::drivers::fs::vfs::Vfs::new(
                 Box::new(fat_fs),
-                &format!("{:?}", partition.partition_type_guid),
+                &format!("{}", partition.partition_type_guid),
             );
 
             crate::drivers::fs::vfs::VFS_INSTANCES
@@ -692,6 +690,6 @@ fn ide_initialize(bar0: u32, bar1: u32, _bar2: u32, _bar3: u32, _bar4: u32) {
             );
         }
 
-        crate::println!("{:?}", partitions);
+        crate::println!("{:X?}", partitions);
     }
 }
