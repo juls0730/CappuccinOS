@@ -42,6 +42,14 @@ pub fn init_serial() -> u8 {
     return 0;
 }
 
+pub fn write_string(string: &str) {
+    for &ch in string.as_bytes() {
+        write_serial(ch as char);
+    }
+    write_serial('\n');
+    write_serial('\r');
+}
+
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 pub fn init_serial() -> u8 {
     return 0;

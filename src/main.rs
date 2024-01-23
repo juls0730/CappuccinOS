@@ -28,9 +28,10 @@ pub extern "C" fn _start() -> ! {
 
     serial::init_serial();
 
-    mem::log_info();
-
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     drivers::acpi::init_acpi();
+
+    mem::log_info();
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     drivers::pci::enumerate_pci_bus();

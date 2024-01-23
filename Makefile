@@ -5,11 +5,13 @@ MODE ?= release
 ARCH ?= x86_64
 MEMORY ?= 512M
 # In MB
-ISO_SIZE ?= 256
+ISO_SIZE ?= 512
 QEMU_OPTS ?= 
 MKSQUASHFS_OPTS ?= 
 GDB ?= 
-ESP_BITS ?= 16
+CPUS ?= 1
+# FAT type
+ESP_BITS ?= 32
 
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
@@ -20,6 +22,10 @@ LIMINE_BOOT_VARIATION = X64
 
 ifeq (${MODE},release)
 	CARGO_OPTS += --release
+endif
+
+ifneq (${CPUS},1)
+	QEMU_OPTS += -smp ${CPUS}
 endif
 
 ifneq (${GDB},)
@@ -118,16 +124,16 @@ partition-iso: copy-iso-files
 		dd if=/dev/zero of=${IMAGE_PATH} bs=1M count=0 seek=${ISO_SIZE}
 ifeq (${ISO_PARTITION_TYPE},GPT)
 		parted -s ${IMAGE_PATH} mklabel gpt
-		parted -s ${IMAGE_PATH} mkpart ESP fat${ESP_BITS} 2048s 34815s
+		parted -s ${IMAGE_PATH} mkpart ESP fat${ESP_BITS} 2048s 262144s
 
 else
 		parted -s ${IMAGE_PATH} mklabel msdos
-		parted -s ${IMAGE_PATH} mkpart primary fat${ESP_BITS} 2048s 34815s
+		parted -s ${IMAGE_PATH} mkpart primary fat${ESP_BITS} 2048s 262144s
 endif
 
 		# Make ISO with 1 partition starting at sector 2048 that is 32768 sectors, or 16MiB, in size
 		# Then a second partition spanning the rest of the disk
-		parted -s ${IMAGE_PATH} mkpart primary 34816s 100%
+		parted -s ${IMAGE_PATH} mkpart primary 262145s 100%
 		parted -s ${IMAGE_PATH} set 1 esp on
 
 build-iso: partition-iso copy-initramfs-files

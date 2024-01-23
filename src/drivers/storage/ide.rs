@@ -241,6 +241,9 @@ impl ATABus {
         outb(self.io_bar + ATADriveDataRegister::LBA1 as u16, 0);
         outb(self.io_bar + ATADriveDataRegister::LBA2 as u16, 0);
 
+        // disable interrupts by setting bit 2 in the control port
+        outb(self.control_bar + 0x0C - 0x0A, 2);
+
         self.send_command(ATADriveCommand::Identify);
 
         if self.status() == 0x00 {

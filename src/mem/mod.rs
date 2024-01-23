@@ -137,17 +137,13 @@ pub fn log_memory_map() {
 
     let memmap = memmap_request.unwrap().memmap();
 
-    crate::println!("====== MEMORY MAP ======");
+    crate::log_serial!("====== MEMORY MAP ======");
     for entry in memmap.iter() {
         let label = (entry.len as usize).label_bytes();
 
-        crate::println!(
-            "[ {:#018X?} ] Type: \033[{};m{:?}\033[0;m Size: {}",
+        crate::log_serial!(
+            "[ {:#018X?} ] Type: {:?} Size: {}",
             entry.base..entry.base + entry.len,
-            match entry.typ {
-                limine::MemoryMapEntryType::Usable => 32,
-                _ => 31,
-            },
             entry.typ,
             label
         )

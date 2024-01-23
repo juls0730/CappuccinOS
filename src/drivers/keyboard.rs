@@ -21,10 +21,7 @@ static EXTENDED_KEY: AtomicBool = AtomicBool::new(false);
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "x86-interrupt" fn keyboard_interrupt_handler() {
-    interrupts::PICS
-        .lock()
-        .write()
-        .notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
+    interrupts::signal_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
 
     let scancode = inb(KBD_DATA_PORT);
 

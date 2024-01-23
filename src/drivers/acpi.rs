@@ -1,16 +1,13 @@
-// TODO: reduce the need to derive(Clone, Copy) everything
-
-use alloc::{sync::Arc, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::{
     arch::io::{inw, outb},
-    libs::{lazy::Lazy, mutex::Mutex, oncecell::OnceCell},
-    log_info,
+    libs::oncecell::OnceCell,
 };
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
-struct SDTHeader {
+pub struct SDTHeader {
     pub signature: [u8; 4],
     pub length: u32,
     pub revision: u8,
@@ -23,23 +20,40 @@ struct SDTHeader {
 }
 
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug)]
-pub struct SDT<T> {
-    pub header: SDTHeader,
-    pub inner: T,
+#[derive(Debug)]
+pub struct SDT<'a, T> {
+    pub header: &'a SDTHeader,
+    pub inner: &'a T,
+    pub extra: Option<&'a [u8]>,
 }
 
-impl<T: Copy> SDT<T> {
-    unsafe fn new(pointer: *mut u8) -> Self {
-        let header = *(pointer.cast::<SDTHeader>());
-        let inner = *(pointer.add(core::mem::size_of::<SDTHeader>()).cast::<T>());
+impl<'a, T> SDT<'a, T> {
+    unsafe fn new(ptr: *const u8) -> Self {
+        let length = core::ptr::read_unaligned(ptr.add(4).cast::<u32>());
+        let data = core::slice::from_raw_parts(ptr, length as usize);
 
-        return Self { header, inner };
+        crate::log_serial!("SDT at: {ptr:p}");
+
+        assert!(data.len() == length as usize);
+
+        let header: &SDTHeader = core::mem::transmute(data[0..].as_ptr());
+        let inner: &T = core::mem::transmute(data[core::mem::size_of::<SDTHeader>()..].as_ptr());
+        let mut extra = None;
+
+        if length as usize > core::mem::size_of::<SDTHeader>() + core::mem::size_of::<T>() {
+            extra = Some(&data[core::mem::size_of::<SDTHeader>() + core::mem::size_of::<T>()..]);
+        }
+
+        return Self {
+            header,
+            inner,
+            extra,
+        };
     }
 }
 
 #[repr(C, packed)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct RSDP {
     signature: [u8; 8],
     checksum: u8,
@@ -49,6 +63,7 @@ struct RSDP {
 }
 
 #[repr(C, packed)]
+#[derive(Debug)]
 struct XSDP {
     rsdp: RSDP,
 
@@ -70,17 +85,17 @@ struct XSDT {
     pointers: u64,
 }
 
-#[derive(Clone, Copy, Debug)]
-enum RootSDT {
-    RSDT(SDT<RSDT>),
-    XSDT(SDT<XSDT>),
+#[derive(Debug)]
+enum RootSDT<'a> {
+    RSDT(SDT<'a, RSDT>),
+    XSDT(SDT<'a, XSDT>),
 }
 
-impl RootSDT {
+impl<'a> RootSDT<'a> {
     fn header(&self) -> SDTHeader {
         return match self {
-            &RootSDT::RSDT(RSDT) => RSDT.header,
-            &RootSDT::XSDT(XSDT) => XSDT.header,
+            RootSDT::RSDT(RSDT) => *RSDT.header,
+            RootSDT::XSDT(XSDT) => *XSDT.header,
         };
     }
 
@@ -97,12 +112,12 @@ impl RootSDT {
         let mut offset = 0;
 
         let root_ptr = match self {
-            &RootSDT::RSDT(RSDT) => {
+            RootSDT::RSDT(RSDT) => {
                 let ptrs = RSDT.inner.pointers as *const u8;
                 assert!(!ptrs.is_null());
                 ptrs.add(offset)
             }
-            &RootSDT::XSDT(XSDT) => {
+            RootSDT::XSDT(XSDT) => {
                 let ptrs = XSDT.inner.pointers as *const u8;
                 assert!(!ptrs.is_null());
                 ptrs.add(offset)
@@ -110,19 +125,17 @@ impl RootSDT {
         };
 
         for _ in 0..idx {
-            let header = *root_ptr.add(offset).cast::<SDTHeader>();
+            let header: &SDTHeader = core::mem::transmute(root_ptr.add(offset).cast::<SDTHeader>());
             offset += header.length as usize;
         }
-
-        crate::println!("{offset:X?} {idx}");
 
         return root_ptr.add(offset);
     }
 }
 
-#[derive(Clone, Debug)]
-struct ACPI {
-    root_sdt: RootSDT,
+#[derive(Debug)]
+struct ACPI<'a> {
+    root_sdt: RootSDT<'a>,
     tables: Vec<[u8; 4]>,
 }
 
@@ -138,8 +151,6 @@ fn resolve_acpi() {
 
     let rsdp = unsafe { &*rsdp_ptr.unwrap().address.as_ptr().unwrap().cast::<RSDP>() };
 
-    log_info!("RSDP: {rsdp:X?}");
-
     // TODO: validate RSDT
     let root_sdt = {
         if rsdp.revision == 0 {
@@ -149,8 +160,6 @@ fn resolve_acpi() {
             RootSDT::XSDT(unsafe { SDT::new(xsdt.xsdt_addr as *mut u8) })
         }
     };
-
-    log_info!("{root_sdt:X?}");
 
     let tables: Vec<[u8; 4]> = (0..root_sdt.len())
         .map(|i| {
@@ -243,19 +252,35 @@ struct FADT {
 pub fn init_acpi() {
     resolve_acpi();
 
+    crate::log_ok!("Found {} ACPI Tables!", ACPI.tables.len());
+
+    crate::log_serial!("Available serial tables:");
+    for i in 0..ACPI.tables.len() {
+        crate::log_serial!("    {}", core::str::from_utf8(&ACPI.tables[i]).unwrap())
+    }
+
     let fadt = find_table::<FADT>("FACP").expect("Failed to find FADT");
 
-    crate::println!("{fadt:X?}");
+    outb(fadt.inner.smi_cmd_port as u16, fadt.inner.acpi_enable);
+
+    while inw(fadt.inner.pm1a_control_block as u16) & 1 == 0 {}
+
+    crate::arch::interrupts::PICS.lock().write().disable();
+
+    *crate::arch::apic::APIC.lock().write() =
+        Some(crate::arch::apic::APIC::new().expect("Failed to enable APIC!"));
+
+    crate::log_ok!("APIC enabled!");
 }
 
-pub fn find_table<T: Copy>(table_name: &str) -> Option<SDT<T>> {
+pub fn find_table<T>(table_name: &str) -> Option<SDT<T>> {
     assert_eq!(table_name.len(), 4);
 
     for (i, table) in ACPI.tables.iter().enumerate() {
         if table == table_name.as_bytes() {
-            let ptr = unsafe { ACPI.root_sdt.get(i).cast::<SDT<T>>() };
-            crate::println!("Found {table_name} at index {i} {ptr:p}");
-            let table = unsafe { *ptr };
+            let ptr = unsafe { ACPI.root_sdt.get(i) };
+
+            let table = unsafe { SDT::new(ptr) };
             return Some(table);
         }
     }

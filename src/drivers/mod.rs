@@ -1,3 +1,4 @@
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod acpi;
 pub mod fs;
 pub mod keyboard;

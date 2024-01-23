@@ -1,6 +1,9 @@
 mod exceptions;
 
-use crate::{arch::x86_common::pic::ChainedPics, libs::mutex::Mutex};
+use crate::{
+    arch::{apic, x86_common::pic::ChainedPics},
+    libs::mutex::Mutex,
+};
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -74,16 +77,24 @@ pub fn idt_set_gate(num: u8, function_ptr: usize) {
     // If the interrupt with this number occurred with the "null" interrupt handler
     // We will need to tell the PIC that interrupt is over, this stops new interrupts
     // From never firing because "it was never finished"
-    PICS.lock().write().notify_end_of_interrupt(num);
+    signal_end_of_interrupt(num);
 }
 
-extern "x86-interrupt" fn null_interrupt_handler() {}
+extern "x86-interrupt" fn null_interrupt_handler() {
+    crate::log_info!("Unhandled interrupt!");
+    if apic::APIC.lock().read().is_some() {
+        apic::APIC
+            .lock()
+            .read()
+            .as_ref()
+            .unwrap()
+            .end_of_interrupt();
+    }
+}
 
 extern "x86-interrupt" fn timer_handler() {
     // crate::usr::tty::puts(".");
-    PICS.lock()
-        .write()
-        .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
+    signal_end_of_interrupt(InterruptIndex::Timer.as_u8());
 }
 
 fn idt_init() {
@@ -111,6 +122,19 @@ fn idt_init() {
             "lidt [{}]",
             in(reg) &IDT_PTR
         );
+    }
+}
+
+pub fn signal_end_of_interrupt(int: u8) {
+    if apic::APIC.lock().read().is_some() {
+        apic::APIC
+            .lock()
+            .read()
+            .as_ref()
+            .unwrap()
+            .end_of_interrupt();
+    } else {
+        PICS.lock().write().notify_end_of_interrupt(int);
     }
 }
 

@@ -34,8 +34,6 @@ struct Registers {
 }
 
 extern "C" fn exception_handler(registers: u64) {
-    crate::println!("{:X?}", registers);
-
     let registers = unsafe { *(registers as *const Registers) };
 
     crate::println!("{:X?}", registers);
