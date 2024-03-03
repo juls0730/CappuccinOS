@@ -1,6 +1,6 @@
 // Original code from: https://github.com/DrChat/buddyalloc/blob/master/src/heap.rs
 // But I made it ~~much worse~~ *better* by making it GlobalAlloc compatible
-// By using A custom Mutex implementation (which also sucks) and dereferencing all the pointers,
+// By using A custom Mutex implementation (which also sucks),
 // I was able to remove all the mut's In the original code.
 
 // TODO: Replace this with a slab allocator that can take advantage of the page frame allocator
@@ -11,7 +11,7 @@ use core::ptr;
 use core::sync::atomic::Ordering::SeqCst;
 use core::sync::atomic::{AtomicPtr, AtomicU8, AtomicUsize};
 
-use crate::libs::mutex::Mutex;
+use crate::libs::sync::Mutex;
 
 const fn log2(num: usize) -> u8 {
     let mut temp = num;
@@ -107,33 +107,36 @@ impl BuddyAllocator {
     }
 
     fn free_list_pop(&self, order: usize) -> Option<*mut u8> {
-        let candidate = (*self.free_lists.lock().read())[order];
+        let mut free_lists_lock = self.free_lists.lock();
+
+        let candidate = (*free_lists_lock)[order];
 
         if candidate.is_null() {
             return None;
         }
 
-        if order != self.free_lists.lock().read().len() - 1 {
-            (*self.free_lists.lock().write())[order] = unsafe { (*candidate).next };
+        if order != free_lists_lock.len() - 1 {
+            (*free_lists_lock)[order] = unsafe { (*candidate).next };
         } else {
-            (*self.free_lists.lock().write())[order] = ptr::null_mut();
+            (*free_lists_lock)[order] = ptr::null_mut();
         }
 
         return Some(candidate as *mut u8);
     }
 
     fn free_list_insert(&self, order: usize, block: *mut u8) {
+        let mut free_lists_lock = self.free_lists.lock();
         let free_block_ptr = block as *mut FreeBlock;
 
-        unsafe { *free_block_ptr = FreeBlock::new((*self.free_lists.lock().read())[order]) };
+        unsafe { *free_block_ptr = FreeBlock::new((*free_lists_lock)[order]) };
 
-        (*self.free_lists.lock().write())[order] = free_block_ptr;
+        (*free_lists_lock)[order] = free_block_ptr;
     }
 
     fn free_list_remove(&self, order: usize, block: *mut u8) -> bool {
         let block_ptr = block as *mut FreeBlock;
 
-        let mut checking: &mut *mut FreeBlock = &mut (*self.free_lists.lock().write())[order];
+        let mut checking: &mut *mut FreeBlock = &mut (*self.free_lists.lock())[order];
 
         unsafe {
             while !(*checking).is_null() {
@@ -177,11 +180,12 @@ impl BuddyAllocator {
     }
 
     pub fn get_free_mem(&self) -> usize {
+        let free_lists_lock = self.free_lists.lock();
         let mut free_mem = 0;
 
         unsafe {
-            for order in 0..self.free_lists.lock().read().len() {
-                let mut block = (*self.free_lists.lock().write())[order];
+            for order in 0..free_lists_lock.len() {
+                let mut block = (*free_lists_lock)[order];
 
                 while !block.is_null() {
                     free_mem += self.order_size(order);
@@ -201,7 +205,9 @@ impl BuddyAllocator {
 unsafe impl GlobalAlloc for BuddyAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if let Some(order_needed) = self.allocation_order(layout.size(), layout.align()) {
-            for order in order_needed..self.free_lists.lock().read().len() {
+            let free_lists_len = { self.free_lists.lock().len() };
+
+            for order in order_needed..free_lists_len {
                 if let Some(block) = self.free_list_pop(order) {
                     if order > order_needed {
                         self.split_free_block(block, order, order_needed);
@@ -221,7 +227,9 @@ unsafe impl GlobalAlloc for BuddyAllocator {
             .expect("Tried to dispose of invalid block");
 
         let mut block = ptr;
-        for order in initial_order..self.free_lists.lock().read().len() {
+        let free_lists_len = { self.free_lists.lock().len() };
+
+        for order in initial_order..free_lists_len {
             if let Some(buddy) = self.buddy(order, block) {
                 if self.free_list_remove(order, block) {
                     block = min(block, buddy);
@@ -233,4 +241,34 @@ unsafe impl GlobalAlloc for BuddyAllocator {
             return;
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn malloc(size: usize) -> *mut u8 {
+    let layout = alloc::alloc::Layout::from_size_align(size, 2);
+
+    if layout.is_err() {
+        return core::ptr::null_mut();
+    }
+
+    unsafe {
+        return alloc::alloc::alloc(layout.unwrap());
+    };
+}
+
+#[no_mangle]
+pub extern "C" fn free(ptr: *mut u8, size: usize) {
+    if ptr.is_null() {
+        return;
+    }
+
+    let layout = alloc::alloc::Layout::from_size_align(size, 2);
+
+    if layout.is_err() {
+        return;
+    }
+
+    unsafe {
+        alloc::alloc::dealloc(ptr, layout.unwrap());
+    };
 }

@@ -12,6 +12,7 @@ GDB ?=
 CPUS ?= 1
 # FAT type
 ESP_BITS ?= 32
+EXPORT_SYMBOLS = true
 
 ISO_PATH = ${ARTIFACTS_PATH}/iso_root
 INITRAMFS_PATH = ${ARTIFACTS_PATH}/initramfs
@@ -84,6 +85,7 @@ compile-initramfs: copy-initramfs-files
 		mksquashfs ${INITRAMFS_PATH} ${ARTIFACTS_PATH}/initramfs.img ${MKSQUASHFS_OPTS}
 
 run-scripts:
+ifeq (${EXPORT_SYMBOLS},true)
 		nm target/${ARCH}-unknown-none/${MODE}/CappuccinOS.elf > scripts/symbols.table
 		@if [ ! -d "scripts/rustc_demangle" ]; then \
 			echo "Cloning rustc_demangle.py into scripts/rustc_demangle/..."; \
@@ -93,6 +95,7 @@ run-scripts:
 		fi
 		python scripts/demangle-symbols.py
 		mv scripts/symbols.table ${INITRAMFS_PATH}/
+endif
 
 		python scripts/font.py
 		mv scripts/font.psf ${INITRAMFS_PATH}/

@@ -1,6 +1,6 @@
 use alloc::{sync::Arc, vec::Vec};
 
-use crate::libs::mutex::Mutex;
+use crate::libs::sync::Mutex;
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -82,7 +82,7 @@ pub fn uncompress_data(bytes: &[u8]) -> Result<Arc<[u8]>, CompressionErrors> {
         return Err(CompressionErrors::FailedChecksum);
     }
 
-    return Ok(data.into());
+    return Ok(data);
 }
 
 fn adler32(bytes: &[u8]) -> u32 {
@@ -151,7 +151,7 @@ impl InflateContext {
     pub fn get_bit(&mut self) -> bool {
         if self.bit_index == 8 {
             self.input_buf.remove(0);
-            if self.input_buf.len() == 0 {
+            if self.input_buf.is_empty() {
                 panic!("Not enough data! {:X?}", self.output_buf);
             }
 
@@ -190,7 +190,7 @@ impl InflateContext {
                     self.uncompressed()?;
                 }
                 0x01 => {
-                    self.inflate(FIXED_LENGTHS.lock().write(), FIXED_DISTS.lock().write())?;
+                    self.inflate(&mut FIXED_LENGTHS.lock(), &mut FIXED_DISTS.lock())?;
                 }
                 0x02 => {
                     self.decode_huffman()?;
@@ -243,7 +243,7 @@ impl InflateContext {
     }
 
     fn peek(&mut self, offset: usize) -> u8 {
-        let index = (self.ring.pointer as usize).wrapping_sub(offset as usize) % 32768;
+        let index = (self.ring.pointer).wrapping_sub(offset) % 32768;
         self.ring.data[index]
     }
 
@@ -416,22 +416,15 @@ fn build_huffman(lengths: &[u8], size: usize, out: &mut Huff) {
 
 fn build_fixed() {
     let mut lengths = [0_u8; 288];
-    for i in 0..144 {
-        lengths[i] = 8;
-    }
-    for i in 144..256 {
-        lengths[i] = 9;
-    }
-    for i in 256..280 {
-        lengths[i] = 7;
-    }
-    for i in 280..288 {
-        lengths[i] = 8;
-    }
-    build_huffman(&lengths, 288, FIXED_LENGTHS.lock().write());
 
-    for i in 0..30 {
-        lengths[i] = 5;
-    }
-    build_huffman(&lengths, 30, FIXED_DISTS.lock().write());
+    lengths[0..144].fill(8);
+    lengths[144..256].fill(9);
+    lengths[256..280].fill(7);
+    lengths[280..288].fill(8);
+
+    build_huffman(&lengths, 288, &mut FIXED_LENGTHS.lock());
+
+    lengths[0..30].fill(5);
+
+    build_huffman(&lengths, 30, &mut FIXED_DISTS.lock());
 }

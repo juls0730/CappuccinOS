@@ -5,9 +5,9 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::drivers::storage::{BlockDevice, GPTPartitionEntry};
+use crate::drivers::storage::Partition;
 
-use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
+use super::vfs::{FsOps, VNode, VNodeOperations};
 
 // The first Cluster (perhaps 0xF0FFFF0F) is the FAT ID
 // The second cluster stores the end-of-cluster-chain marker
@@ -97,6 +97,8 @@ pub struct FSInfo {
 
 impl FSInfo {
     pub fn from_bytes(bytes: Arc<[u8]>) -> Self {
+        assert!(bytes.len() >= 512);
+
         let lead_signature = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
         let mid_signature = u32::from_le_bytes(bytes[484..488].try_into().unwrap());
         let last_known_free_cluster = u32::from_le_bytes(bytes[488..492].try_into().unwrap());
@@ -117,6 +119,7 @@ impl FSInfo {
 
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
+#[allow(dead_code)]
 enum FileEntryAttributes {
     ReadOnly = 0x01,
     Hidden = 0x02,
@@ -127,7 +130,7 @@ enum FileEntryAttributes {
     LongFileName = 0x0F,
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Debug)]
 struct LongFileName {
     entry_order: u8,
@@ -140,7 +143,7 @@ struct LongFileName {
     final_characters: [u16; 2],
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct FileEntry {
     file_name: [u8; 8],
@@ -158,11 +161,18 @@ pub struct FileEntry {
     file_size: u32,
 }
 
-pub struct FatFs<'a> {
-    // Block device Info
-    drive: &'a dyn BlockDevice,
-    partition: GPTPartitionEntry,
+impl FileEntry {
+    pub fn cluster(&self) -> u32 {
+        let mut cluster = self.low_first_cluster_number as u32;
+        cluster |= (self.high_first_cluster_number as u32) << 16;
+        return cluster;
+    }
+}
+
+pub struct FatFs {
+    partition: Partition,
     // FAT info
+    #[allow(dead_code)]
     fs_info: Option<FSInfo>,
     fat: Option<Arc<[u32]>>,
     bpb: BIOSParameterBlock,
@@ -172,10 +182,10 @@ pub struct FatFs<'a> {
     sectors_per_fat: usize,
 }
 
-impl<'a> FatFs<'a> {
-    pub fn new(drive: &'a dyn BlockDevice, partition: GPTPartitionEntry) -> Result<Self, ()> {
-        let bpb_bytes = drive
-            .read(partition.start_sector, 1)
+impl FatFs {
+    pub fn new(partition: Partition) -> Result<Self, ()> {
+        let bpb_bytes = partition
+            .read(0, 1)
             .expect("Failed to read FAT32 BIOS Parameter Block!");
 
         let bpb = unsafe { *(bpb_bytes.as_ptr().cast::<BIOSParameterBlock>()) };
@@ -239,8 +249,8 @@ impl<'a> FatFs<'a> {
 
         let fs_info = match fat_type {
             FatType::Fat32(ebpb) => {
-                let fsinfo_bytes = drive
-                    .read(partition.start_sector + ebpb.fsinfo_sector as u64, 1)
+                let fsinfo_bytes = partition
+                    .read(ebpb.fsinfo_sector as u64, 1)
                     .expect("Failed to read FSInfo sector!");
 
                 Some(FSInfo::from_bytes(fsinfo_bytes))
@@ -248,7 +258,7 @@ impl<'a> FatFs<'a> {
             _ => None,
         };
 
-        let fat_start = partition.start_sector + bpb.reserved_sectors as u64;
+        let fat_start = bpb.reserved_sectors as u64;
 
         let sectors_per_fat = match fat_type {
             FatType::Fat32(ebpb) => ebpb.sectors_per_fat_ext as usize,
@@ -268,7 +278,7 @@ impl<'a> FatFs<'a> {
             let mut fat_vec: Vec<u32> = Vec::with_capacity(bytes_per_fat / cluster_bytes);
 
             for i in 0..sectors_per_fat {
-                let sector = drive
+                let sector = partition
                     .read(fat_start + i as u64, 1)
                     .expect("Failed to read FAT");
                 for j in 0..(512 / cluster_bytes) {
@@ -290,7 +300,7 @@ impl<'a> FatFs<'a> {
             fat = Some(Arc::from(fat_vec));
         } else {
             crate::log_info!(
-                "\033[33mWARNING\033[0m: FAT is not being stored in memory, this feature is experimental and file reads are expected to be slower."
+                "\x1B[33mWARNING\x1B[0m: FAT is not being stored in memory, this feature is experimental and file reads are expected to be slower."
             )
         }
 
@@ -299,7 +309,6 @@ impl<'a> FatFs<'a> {
         let cluster_size = bpb.sectors_per_cluster as usize * 512;
 
         return Ok(Self {
-            drive,
             partition,
             fs_info,
             fat,
@@ -416,8 +425,8 @@ impl<'a> FatFs<'a> {
     }
 
     pub fn read_cluster(&self, cluster: usize) -> Result<Arc<[u8]>, ()> {
-        return self.drive.read(
-            self.partition.start_sector + self.cluster_to_sector(cluster) as u64,
+        return self.partition.read(
+            self.cluster_to_sector(cluster) as u64,
             self.bpb.sectors_per_cluster as usize,
         );
     }
@@ -463,14 +472,14 @@ impl<'a> FatFs<'a> {
             let fat_entry_size = match self.fat_type {
                 FatType::Fat12(_) => 2, // 12 bits per entry
                 FatType::Fat16(_) => 2, // 16 bits per entry
-                FatType::Fat32(_) => 4, // 28S bits per entry
+                FatType::Fat32(_) => 4, // 28 bits per entry
             };
             let entry_offset = cluster * fat_entry_size;
             let entry_offset_in_sector = entry_offset % 512;
 
             // needs two incase we "straddle a sector"
             let sector_data = self
-                .drive
+                .partition
                 .read(self.fat_start + entry_offset as u64 / 512, 2)
                 .expect("Failed to read from FAT!");
 
@@ -487,7 +496,7 @@ impl<'a> FatFs<'a> {
                         [entry_offset_in_sector..entry_offset_in_sector + 2]
                         .try_into()
                         .unwrap();
-                    return (u16::from_le_bytes(cluster_entry_bytes) & 0xFFFF) as u32;
+                    return (u16::from_le_bytes(cluster_entry_bytes)) as u32;
                 }
                 FatType::Fat32(_) => {
                     let cluster_entry_bytes: [u8; 4] = sector_data
@@ -501,10 +510,22 @@ impl<'a> FatFs<'a> {
     }
 }
 
-impl<'a> VfsFileSystem for FatFs<'a> {
-    fn open(&self, path: &str) -> Result<Box<dyn VfsFile + '_>, ()> {
-        let path_componenets: Vec<&str> = path.trim_start_matches('/').split('/').collect();
-        let mut current_cluster = match self.fat_type {
+impl FsOps for FatFs {
+    fn mount(&self, path: &str, data: &mut *mut u8, vfsp: *const super::vfs::Vfs) {
+        // TODO: load the FAT into memory here
+
+        *data = core::ptr::addr_of!(*self) as *mut u8;
+
+        // *data = unsafe { alloc::alloc::alloc(alloc::alloc::Layout::new::<Option<VNode>>()) };
+        // unsafe { *data.cast::<Option<VNode>>() = None };
+    }
+
+    fn unmount(&self, vfsp: *const super::vfs::Vfs) {
+        // TODO: unload the FAT form memory
+    }
+
+    fn root(&self, vfsp: *const super::vfs::Vfs) -> super::vfs::VNode {
+        let mut root_cluster = match self.fat_type {
             FatType::Fat32(ebpb) => ebpb.root_dir_cluster as usize,
             _ => self.sector_to_cluster(
                 self.bpb.reserved_sectors as usize
@@ -512,101 +533,383 @@ impl<'a> VfsFileSystem for FatFs<'a> {
             ),
         };
 
-        for path in path_componenets {
-            let file_entry: FileEntry = self.find_entry_in_directory(current_cluster, path)?;
+        let file = File::Dir(FatDirectory {
+            directory_cluster: root_cluster,
+            // fat_fs: self,
+        });
 
-            if file_entry.attributes == FileEntryAttributes::Directory as u8 {
-                current_cluster = (((file_entry.high_first_cluster_number as u32) << 16)
-                    | file_entry.low_first_cluster_number as u32)
-                    as usize;
-            } else {
-                return Ok(Box::new(FatFile {
-                    fat_fs: self,
-                    file_entry,
-                }));
-            }
-        }
-
-        return Err(());
+        return super::vfs::VNode {
+            flags: 0,
+            ref_count: 0,
+            shared_lock_count: 0,
+            exclusive_lock_count: 0,
+            vfs_mounted_here: None,
+            ops: Box::new(file),
+            node_data: None,
+            parent: vfsp,
+            typ: super::vfs::VNodeType::Directory,
+            data: core::ptr::null_mut(),
+        };
     }
 
-    fn read_dir(&self, path: &str) -> Result<Box<dyn VfsDirectory>, ()> {
-        unimplemented!();
+    fn fid(&self, path: &str, vfsp: *const super::vfs::Vfs) -> Option<super::vfs::FileId> {
+        todo!("FAT FID");
+    }
+
+    fn statfs(&self, vfsp: *const super::vfs::Vfs) -> super::vfs::StatFs {
+        todo!("FAT STATFS");
+    }
+
+    fn sync(&self, vfsp: *const super::vfs::Vfs) {
+        todo!("FAT SYNC");
+    }
+
+    fn vget(&self, fid: super::vfs::FileId, vfsp: *const super::vfs::Vfs) -> super::vfs::VNode {
+        todo!("FAT VGET");
+    }
+
+    // fn open(&self, path: &str) -> Result<Box<dyn VfsFile + '_>, ()> {
+    //     let path_componenets: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    //     let mut current_cluster = match self.fat_type {
+    //         FatType::Fat32(ebpb) => ebpb.root_dir_cluster as usize,
+    //         _ => self.sector_to_cluster(
+    //             self.bpb.reserved_sectors as usize
+    //                 + (self.bpb.fat_count as usize * self.sectors_per_fat),
+    //         ),
+    //     };
+
+    //     for path in path_componenets {
+    //         let file_entry: FileEntry = self.find_entry_in_directory(current_cluster, path)?;
+
+    //         if file_entry.attributes == FileEntryAttributes::Directory as u8 {
+    //             current_cluster = (((file_entry.high_first_cluster_number as u32) << 16)
+    //                 | file_entry.low_first_cluster_number as u32)
+    //                 as usize;
+    //         } else {
+    //             return Ok(Box::new(FatFile {
+    //                 fat_fs: self,
+    //                 file_entry,
+    //             }));
+    //         }
+    //     }
+
+    //     return Err(());
+    // }
+
+    // fn read_dir(&self, _path: &str) -> Result<Box<dyn VfsDirectory>, ()> {
+    //     unimplemented!();
+    // }
+}
+
+enum File {
+    Archive(FatFile),
+    Dir(FatDirectory),
+}
+
+impl<'a> VNodeOperations for File {
+    fn access(&self, m: u32, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn bmap(&self, block_number: u32, bnp: (), vp: *const VNode) -> super::vfs::VNode {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn bread(&self, block_number: u32, vp: *const VNode) -> Arc<[u8]> {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn close(&self, f: u32, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn create(
+        &self,
+        nm: &str,
+        va: super::vfs::VAttr,
+        e: u32,
+        m: u32,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) -> Result<super::vfs::VNode, ()> {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn fsync(&self, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn getattr(&self, c: super::vfs::UserCred, vp: *const VNode) -> super::vfs::VAttr {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn inactive(&self, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn ioctl(&self, com: u32, d: *mut u8, f: u32, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn link(
+        &self,
+        target_dir: *mut super::vfs::VNode,
+        target_name: &str,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn lookup(
+        &self,
+        nm: &str,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) -> Result<super::vfs::VNode, ()> {
+        let fat_fs = unsafe { (*(*vp).parent).data.cast::<FatFs>() };
+
+        match self {
+            File::Dir(directory) => unsafe {
+                let file_entry =
+                    (*fat_fs).find_entry_in_directory(directory.directory_cluster, nm)?;
+
+                let file_typ = if file_entry.attributes == FileEntryAttributes::Directory as u8 {
+                    crate::drivers::fs::vfs::VNodeType::Directory
+                } else {
+                    crate::drivers::fs::vfs::VNodeType::Regular
+                };
+
+                let file = if file_entry.attributes == FileEntryAttributes::Directory as u8 {
+                    File::Dir(FatDirectory {
+                        directory_cluster: file_entry.cluster() as usize,
+                    })
+                } else {
+                    File::Archive(FatFile { file_entry })
+                };
+
+                let vnode = VNode {
+                    flags: 0,
+                    ref_count: 0,
+                    shared_lock_count: 0,
+                    exclusive_lock_count: 0,
+                    vfs_mounted_here: None,
+                    ops: Box::new(file),
+                    node_data: None,
+                    parent: (*vp).parent,
+                    typ: file_typ,
+                    data: core::ptr::null_mut(),
+                };
+
+                Ok(vnode)
+            },
+            _ => panic!("tried to lookup on a file"),
+        }
+    }
+
+    fn mkdir(
+        &self,
+        nm: &str,
+        va: super::vfs::VAttr,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) -> Result<super::vfs::VNode, ()> {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn open(&self, f: u32, c: super::vfs::UserCred, vp: *const VNode) -> Result<Arc<[u8]>, ()> {
+        match self {
+            File::Archive(archive) => {
+                let fat_fs = unsafe { (*(*vp).parent).data.cast::<FatFs>() };
+
+                let mut file: Vec<u8> = Vec::with_capacity(archive.file_entry.file_size as usize);
+                let mut file_ptr_index = 0;
+
+                let mut cluster = ((archive.file_entry.high_first_cluster_number as u32) << 16)
+                    | archive.file_entry.low_first_cluster_number as u32;
+                let cluster_size = unsafe { (*fat_fs).cluster_size };
+
+                let mut copied_bytes = 0;
+
+                loop {
+                    let cluster_data = unsafe { (*fat_fs).read_cluster(cluster as usize)? };
+
+                    let remaining = archive.file_entry.file_size as usize - copied_bytes;
+                    let to_copy = if remaining > cluster_size {
+                        cluster_size
+                    } else {
+                        remaining
+                    };
+
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            cluster_data.as_ptr(),
+                            file.as_mut_ptr().add(file_ptr_index),
+                            to_copy,
+                        );
+
+                        file.set_len(file.len() + to_copy);
+                    }
+
+                    file_ptr_index += cluster_size;
+
+                    copied_bytes += to_copy;
+
+                    cluster = unsafe { (*fat_fs).get_next_cluster(cluster as usize) };
+
+                    match unsafe { (*fat_fs).fat_type } {
+                        FatType::Fat12(_) => {
+                            if cluster >= EOC_12 {
+                                break;
+                            }
+                        }
+                        FatType::Fat16(_) => {
+                            if cluster >= EOC_16 {
+                                break;
+                            }
+                        }
+                        FatType::Fat32(_) => {
+                            if cluster >= EOC_32 {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                return Ok(Arc::from(file));
+            }
+            _ => panic!("Cannot open non archives"),
+        }
+
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn rdwr(
+        &self,
+        uiop: *const super::vfs::UIO,
+        direction: super::vfs::IODirection,
+        f: u32,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn readdir(&self, uiop: *const super::vfs::UIO, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn readlink(&self, uiop: *const super::vfs::UIO, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn rename(
+        &self,
+        nm: &str,
+        target_dir: *mut super::vfs::VNode,
+        target_name: &str,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn select(&self, w: super::vfs::IODirection, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn setattr(&self, va: super::vfs::VAttr, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn strategy(&self, bp: (), vp: *const VNode) {
+        todo!("VNODE OPERATIONS");
+    }
+
+    fn symlink(
+        &self,
+        link_name: &str,
+        va: super::vfs::VAttr,
+        target_name: &str,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) {
+        todo!("VNODE OPERATIONS");
     }
 }
 
-struct FatFile<'a> {
-    fat_fs: &'a FatFs<'a>,
+struct FatFile {
+    // fat_fs: &'a FatFs,
     file_entry: FileEntry,
 }
 
-impl<'a> VfsFile for FatFile<'a> {
-    fn read(&self) -> Result<Arc<[u8]>, ()> {
-        let mut file: Vec<u8> = Vec::with_capacity(self.file_entry.file_size as usize);
-        let mut file_ptr_index = 0;
+// impl<'a> VfsFile for FatFile<'a> {
+//     fn read(&self) -> Result<Arc<[u8]>, ()> {
+//         let mut file: Vec<u8> = Vec::with_capacity(self.file_entry.file_size as usize);
+//         let mut file_ptr_index = 0;
 
-        let mut cluster = ((self.file_entry.high_first_cluster_number as u32) << 16)
-            | self.file_entry.low_first_cluster_number as u32;
-        let cluster_size = self.fat_fs.cluster_size;
+//         let mut cluster = ((self.file_entry.high_first_cluster_number as u32) << 16)
+//             | self.file_entry.low_first_cluster_number as u32;
+//         let cluster_size = self.fat_fs.cluster_size;
 
-        let mut copied_bytes = 0;
+//         let mut copied_bytes = 0;
 
-        loop {
-            let cluster_data = self.fat_fs.read_cluster(cluster as usize)?;
+//         loop {
+//             let cluster_data = self.fat_fs.read_cluster(cluster as usize)?;
 
-            let remaining = self.file_entry.file_size as usize - copied_bytes;
-            let to_copy = if remaining > cluster_size {
-                cluster_size
-            } else {
-                remaining
-            };
+//             let remaining = self.file_entry.file_size as usize - copied_bytes;
+//             let to_copy = if remaining > cluster_size {
+//                 cluster_size
+//             } else {
+//                 remaining
+//             };
 
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    cluster_data.as_ptr(),
-                    file.as_mut_ptr().add(file_ptr_index),
-                    to_copy,
-                );
+//             unsafe {
+//                 core::ptr::copy_nonoverlapping(
+//                     cluster_data.as_ptr(),
+//                     file.as_mut_ptr().add(file_ptr_index),
+//                     to_copy,
+//                 );
 
-                file.set_len(file.len() + to_copy);
-            }
+//                 file.set_len(file.len() + to_copy);
+//             }
 
-            file_ptr_index += cluster_size;
+//             file_ptr_index += cluster_size;
 
-            copied_bytes += to_copy;
+//             copied_bytes += to_copy;
 
-            cluster = self.fat_fs.get_next_cluster(cluster as usize);
+//             cluster = self.fat_fs.get_next_cluster(cluster as usize);
 
-            match self.fat_fs.fat_type {
-                FatType::Fat12(_) => {
-                    if cluster >= EOC_12 {
-                        break;
-                    }
-                }
-                FatType::Fat16(_) => {
-                    if cluster >= EOC_16 {
-                        break;
-                    }
-                }
-                FatType::Fat32(_) => {
-                    if cluster >= EOC_32 {
-                        break;
-                    }
-                }
-            }
-        }
+//             match self.fat_fs.fat_type {
+//                 FatType::Fat12(_) => {
+//                     if cluster >= EOC_12 {
+//                         break;
+//                     }
+//                 }
+//                 FatType::Fat16(_) => {
+//                     if cluster >= EOC_16 {
+//                         break;
+//                     }
+//                 }
+//                 FatType::Fat32(_) => {
+//                     if cluster >= EOC_32 {
+//                         break;
+//                     }
+//                 }
+//             }
+//         }
 
-        return Ok(Arc::from(file));
-    }
-}
+//         return Ok(Arc::from(file));
+//     }
+// }
 
-struct FatDirectory<'a> {
-    fat_fs: &'a FatFs<'a>,
+struct FatDirectory {
+    // fat_fs: &'a FatFs,
     directory_cluster: usize,
 }
 
-impl<'a> VfsDirectory for FatDirectory<'a> {
-    fn list_files(&self) -> Result<Arc<[Box<dyn VfsFile>]>, ()> {
-        unimplemented!();
-    }
-}
+// impl<'a> VfsDirectory for FatDirectory<'a> {
+//     fn list_files(&self) -> Result<Arc<[Box<dyn VfsFile>]>, ()> {
+//         unimplemented!();
+//     }
+// }

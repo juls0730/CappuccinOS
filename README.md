@@ -104,7 +104,8 @@ sudo dd if=bin/CappuccinOS.iso of=/dev/sdX bs=1M && sync
 
 ## Supported Architectures
 - x86_64
-- RISC-V64 (experimental until I can get my hands on some RISC-V hardware)
+- ~~aarch64~~ not in scope __might__ not build
+- ~~RISC-V64~~ not in scope __might__ not build
 
 ## Credits an attributions
 Inspiration was mainly from [JDH's Tetris OS](https://www.youtube.com/watch?v=FaILnmUYS_U), mixed with a growing interest in low level in general and an interest in learning rust (yeah, I started this project with not that much rust experience, maybe a CLI app or two, and trust me it shows).

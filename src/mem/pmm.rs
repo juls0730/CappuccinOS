@@ -27,7 +27,7 @@ impl PhysicalMemoryManager {
 
         let mut highest_addr: usize = 0;
 
-        for entry in super::MEMMAP.lock().read().iter() {
+        for entry in super::MEMMAP.lock().iter() {
             if entry.typ == limine::MemoryMapEntryType::Usable {
                 pmm.usable_pages
                     .fetch_add(entry.len as usize / PAGE_SIZE, Ordering::SeqCst);
@@ -42,7 +42,7 @@ impl PhysicalMemoryManager {
         let bitmap_size =
             ((pmm.highest_page_idx.load(Ordering::SeqCst) / 8) + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
 
-        for entry in super::MEMMAP.lock().write().iter_mut() {
+        for entry in super::MEMMAP.lock().iter_mut() {
             if entry.typ != limine::MemoryMapEntryType::Usable {
                 continue;
             }
@@ -63,7 +63,7 @@ impl PhysicalMemoryManager {
             }
         }
 
-        for entry in super::MEMMAP.lock().read().iter() {
+        for entry in super::MEMMAP.lock().iter() {
             if entry.typ != limine::MemoryMapEntryType::Usable {
                 continue;
             }

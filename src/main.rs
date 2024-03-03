@@ -1,23 +1,25 @@
-#![feature(abi_x86_interrupt, allocator_api, naked_functions)]
+#![feature(abi_x86_interrupt, naked_functions)]
+// Unforunately, this doesnt actually work with rust-analyzer, so if you want the annoying
+// Error about "unnecessary returns" to go away, see https://github.com/rust-lang/rust-analyzer/issues/16542
+// And if that issue ever gets closed, and you're reading this, feel free to remove this comment
+#![allow(clippy::needless_return)]
 #![no_std]
 #![no_main]
-
-extern crate alloc;
-
-mod arch;
-mod drivers;
-mod libs;
-mod mem;
-mod usr;
 
 use core::ffi::CStr;
 
 use alloc::{format, vec::Vec};
-use drivers::serial;
-use libs::util::hcf;
+use drivers::serial::{read_serial, write_serial};
 use limine::KernelFileRequest;
 
-use crate::{drivers::serial::write_serial, mem::LabelBytes};
+use crate::drivers::fs::vfs::{vfs_open, UserCred};
+
+extern crate alloc;
+
+pub mod arch;
+pub mod drivers;
+pub mod libs;
+pub mod mem;
 
 pub static KERNEL_REQUEST: KernelFileRequest = KernelFileRequest::new(0);
 
@@ -26,34 +28,98 @@ pub extern "C" fn _start() -> ! {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     arch::interrupts::init();
 
-    serial::init_serial();
-
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    drivers::acpi::init_acpi();
-
-    mem::log_info();
+    drivers::serial::init_serial();
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     drivers::pci::enumerate_pci_bus();
 
-    drivers::fs::vfs::init();
+    drivers::storage::ide::init();
 
-    // crate::println!("{:?}", INITRAMFS.open("/font.psf").unwrap().read());
+    crate::println!("{:?}", vfs_open("/example.txt"));
 
-    if let Some(kernel) = KERNEL_REQUEST.get_response().get() {
-        crate::println!("{:X?}", kernel.kernel_file.get().unwrap().gpt_disk_uuid);
-    }
-
+    let file = vfs_open("/example.txt").unwrap();
     crate::println!(
-        "Total memory: {}",
-        crate::mem::PHYSICAL_MEMORY_MANAGER
-            .total_memory()
-            .label_bytes()
+        "{:X?}",
+        file.ops.open(0, UserCred { uid: 0, gid: 0 }, file.as_ptr())
     );
 
-    usr::shell::init_shell();
+    let fb = drivers::video::get_framebuffer().unwrap();
+    let length = (fb.height * fb.width) * (fb.bpp / 8);
+    let pages = length / crate::mem::pmm::PAGE_SIZE;
+    let buffer = unsafe {
+        core::slice::from_raw_parts_mut(
+            crate::mem::PHYSICAL_MEMORY_MANAGER
+                .alloc(pages)
+                .expect("Could not allocate color buffer") as *mut u32,
+            length,
+        )
+    };
+
+    for y in 0..fb.height {
+        let r = ((y as f32) / ((fb.height - 1) as f32)) * 200.0;
+        for x in 0..fb.width {
+            let g = ((x as f32) / ((fb.width - 1) as f32)) * 200.0;
+            buffer[y * fb.width + x] = ((r as u32) << 16) | ((g as u32) << 8) | 175;
+        }
+    }
+
+    fb.blit_screen(buffer, None);
+
+    loop {
+        let ch = read_serial();
+
+        if ch == b'\x00' {
+            continue;
+        }
+
+        if ch == b'\x08' {
+            write_serial(b'\x08');
+            write_serial(b' ');
+            write_serial(b'\x08');
+        }
+
+        if ch > 0x20 && ch < 0x7F {
+            write_serial(ch);
+        }
+    }
 
     hcf();
+}
+
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n", &alloc::format!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => (
+
+        $crate::drivers::serial::write_string(&alloc::format!($($arg)*).replace('\n', "\n\r"))
+    )
+}
+
+#[macro_export]
+macro_rules! log_info {
+    ($($arg:tt)*) => ($crate::println!("\x1B[97m[ \x1B[90m? \x1B[97m]\x1B[0m () {}", &alloc::format!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! log_serial {
+    ($($arg:tt)*) => (
+            $crate::drivers::serial::write_string(&alloc::format!($($arg)*).replace('\n', "\n\r"))
+    );
+}
+
+#[macro_export]
+macro_rules! log_error {
+    ($($arg:tt)*) => ($crate::println!("\x1B[97m[ \x1B[91m! \x1B[97m]\x1B[0m {}", &alloc::format!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! log_ok {
+    ($($arg:tt)*) => ($crate::println!("\x1B[97m[ \x1B[92m* \x1B[97m]\x1B[0;m {}", &alloc::format!($($arg)*)));
 }
 
 #[derive(Debug)]
@@ -71,8 +137,8 @@ impl KernelFeatures {
     }
 }
 
-pub static KERNEL_FEATURES: libs::lazy::Lazy<KernelFeatures> =
-    libs::lazy::Lazy::new(parse_kernel_cmdline);
+pub static KERNEL_FEATURES: libs::cell::LazyCell<KernelFeatures> =
+    libs::cell::LazyCell::new(parse_kernel_cmdline);
 
 fn parse_kernel_cmdline() -> KernelFeatures {
     let mut kernel_features: KernelFeatures = KernelFeatures { fat_in_mem: true };
@@ -118,13 +184,9 @@ fn parse_kernel_cmdline() -> KernelFeatures {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    let message = format!("{}\n", info);
+    let msg = &format!("{info}\n").replace('\n', "\n\r");
 
-    for ch in message.chars() {
-        write_serial(ch);
-    }
-
-    log_error!("{}", info);
+    drivers::serial::write_string(msg);
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
@@ -136,4 +198,16 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     }
 
     hcf();
+}
+
+pub fn hcf() -> ! {
+    loop {
+        unsafe {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            core::arch::asm!("hlt");
+
+            #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
+            core::arch::asm!("wfi");
+        }
+    }
 }

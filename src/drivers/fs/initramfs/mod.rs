@@ -5,17 +5,14 @@ use core::fmt::{self, Debug};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use limine::ModuleRequest;
 
-use crate::libs::{
-    lazy::Lazy,
-    math::{ceil, floor},
-};
+use crate::libs::cell::LazyCell;
 
-use super::vfs::{VfsDirectory, VfsFile, VfsFileSystem};
+use super::vfs::{FsOps, VNode, VNodeOperations};
 
 pub static MODULE_REQUEST: ModuleRequest = ModuleRequest::new(0);
 
 // TODO: do something better than this shite
-pub static INITRAMFS: Lazy<Squashfs> = Lazy::new(init);
+pub static INITRAMFS: LazyCell<Squashfs> = LazyCell::new(init);
 
 fn init() -> Squashfs<'static> {
     // TODO: Put the module request stuff in another file?
@@ -110,41 +107,30 @@ impl Squashfs<'_> {
         let fragment_table: Option<&[u8]> = {
             if superblock.frag_table == u64::MAX {
                 None
+            } else if superblock.export_table != u64::MAX {
+                Some(
+                    &squashfs_data
+                        [superblock.frag_table as usize..superblock.export_table as usize],
+                )
+            } else if superblock.xattr_table != u64::MAX {
+                Some(
+                    &squashfs_data[superblock.frag_table as usize..superblock.xattr_table as usize],
+                )
             } else {
-                if superblock.export_table != u64::MAX {
-                    Some(
-                        &squashfs_data
-                            [superblock.frag_table as usize..superblock.export_table as usize],
-                    )
-                } else if superblock.xattr_table != u64::MAX {
-                    Some(
-                        &squashfs_data
-                            [superblock.frag_table as usize..superblock.xattr_table as usize],
-                    )
-                } else {
-                    Some(
-                        &squashfs_data
-                            [superblock.frag_table as usize..superblock.id_table as usize],
-                    )
-                }
+                Some(&squashfs_data[superblock.frag_table as usize..superblock.id_table as usize])
             }
         };
 
         let export_table: Option<&[u8]> = {
             if superblock.export_table == u64::MAX {
                 None
+            } else if superblock.xattr_table != u64::MAX {
+                Some(
+                    &squashfs_data
+                        [superblock.export_table as usize..superblock.xattr_table as usize],
+                )
             } else {
-                if superblock.xattr_table != u64::MAX {
-                    Some(
-                        &squashfs_data
-                            [superblock.export_table as usize..superblock.xattr_table as usize],
-                    )
-                } else {
-                    Some(
-                        &squashfs_data
-                            [superblock.export_table as usize..superblock.id_table as usize],
-                    )
-                }
+                Some(&squashfs_data[superblock.export_table as usize..superblock.id_table as usize])
             }
         };
 
@@ -201,15 +187,11 @@ impl Squashfs<'_> {
         match inode_file_type {
             InodeFileType::BasicDirectory => {
                 return Inode::BasicDirectory(BasicDirectoryInode::from_bytes(
-                    self,
                     &inode_table[inode_offset..],
                 ));
             }
             InodeFileType::BasicFile => {
-                return Inode::BasicFile(BasicFileInode::from_bytes(
-                    self,
-                    &inode_table[inode_offset..],
-                ));
+                return Inode::BasicFile(BasicFileInode::from_bytes(&inode_table[inode_offset..]));
             }
             _ => panic!("Unsupported or unknown inode file type {inode_file_type:?}!"),
         };
@@ -229,7 +211,7 @@ impl Squashfs<'_> {
         } else {
             header & 0x8000 == 0
         };
-        let table_size = header & 0x7FFF;
+        // let table_size = header & 0x7FFF;
 
         // if table.len() >= 8192 {
         //     panic!("Inode block is not less than 8KiB!");
@@ -255,45 +237,220 @@ impl Squashfs<'_> {
     }
 }
 
-impl<'a> VfsFileSystem for Squashfs<'a> {
-    fn open(&self, path: &str) -> Result<Box<dyn VfsFile + '_>, ()> {
-        let path_components: Vec<&str> = path.trim_start_matches('/').split('/').collect();
-        let mut current_dir = self.read_root_dir();
-
-        for (i, &part) in path_components.iter().enumerate() {
-            let file = current_dir.find(part).ok_or(())?;
-
-            match file {
-                Inode::BasicDirectory(dir) => {
-                    current_dir = dir;
-                }
-                Inode::BasicFile(file) => {
-                    if i < path_components.len() - 1 {
-                        return Err(());
-                    }
-
-                    return Ok(Box::new(file));
-                }
-            }
-        }
-
-        return Err(());
+impl<'a> FsOps for Squashfs<'a> {
+    fn mount(&self, path: &str, data: &mut *mut u8, vfsp: *const super::vfs::Vfs) {
+        // STUB
     }
 
-    fn read_dir(&self, path: &str) -> Result<Box<dyn VfsDirectory>, ()> {
-        unimplemented!()
+    fn unmount(&self, vfsp: *const super::vfs::Vfs) {
+        // STUB
+    }
+
+    fn root(&self, vfsp: *const super::vfs::Vfs) -> super::vfs::VNode {
+        let root_dir = Inode::BasicDirectory(self.read_root_dir());
+
+        super::vfs::VNode {
+            flags: 0,
+            ref_count: 0,
+            shared_lock_count: 0,
+            exclusive_lock_count: 0,
+            vfs_mounted_here: None,
+            ops: Box::new(Inode::BasicDirectory(self.read_root_dir())),
+            node_data: None,
+            parent: vfsp,
+            typ: super::vfs::VNodeType::Directory,
+            data: core::ptr::null_mut(),
+        }
+    }
+
+    fn fid(&self, path: &str, vfsp: *const super::vfs::Vfs) -> Option<super::vfs::FileId> {
+        todo!();
+    }
+
+    fn statfs(&self, vfsp: *const super::vfs::Vfs) -> super::vfs::StatFs {
+        todo!();
+    }
+
+    fn sync(&self, vfsp: *const super::vfs::Vfs) {
+        todo!();
+    }
+
+    fn vget(&self, fid: super::vfs::FileId, vfsp: *const super::vfs::Vfs) -> super::vfs::VNode {
+        todo!();
     }
 }
 
+// impl<'a> VfsFileSystem for Squashfs<'a> {
+//     fn open(&self, path: &str) -> Result<Box<dyn VfsFile + '_>, ()> {
+//         let path_components: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+//         let mut current_dir = self.read_root_dir();
+
+//         for (i, &part) in path_components.iter().enumerate() {
+//             let file = current_dir.find(part).ok_or(())?;
+
+//             match file {
+//                 Inode::BasicDirectory(dir) => {
+//                     current_dir = dir;
+//                 }
+//                 Inode::BasicFile(file) => {
+//                     if i < path_components.len() - 1 {
+//                         return Err(());
+//                     }
+
+//                     return Ok(Box::new(file));
+//                 }
+//             }
+//         }
+
+//         return Err(());
+//     }
+
+//     fn read_dir(&self, _path: &str) -> Result<Box<dyn VfsDirectory>, ()> {
+//         unimplemented!()
+//     }
+// }
+
 #[derive(Clone, Copy, Debug)]
-enum Inode<'a> {
-    BasicFile(BasicFileInode<'a>),
-    BasicDirectory(BasicDirectoryInode<'a>),
+enum Inode {
+    BasicFile(BasicFileInode),
+    BasicDirectory(BasicDirectoryInode),
+}
+
+impl VNodeOperations for Inode {
+    fn open(&self, f: u32, c: super::vfs::UserCred, vp: *const VNode) -> Result<Arc<[u8]>, ()> {
+        todo!()
+    }
+
+    fn close(&self, f: u32, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn rdwr(
+        &self,
+        uiop: *const super::vfs::UIO,
+        direction: super::vfs::IODirection,
+        f: u32,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) {
+        todo!()
+    }
+
+    fn ioctl(&self, com: u32, d: *mut u8, f: u32, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn select(&self, w: super::vfs::IODirection, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn getattr(&self, c: super::vfs::UserCred, vp: *const VNode) -> super::vfs::VAttr {
+        todo!()
+    }
+
+    fn setattr(&self, va: super::vfs::VAttr, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn access(&self, m: u32, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn lookup(
+        &self,
+        nm: &str,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) -> Result<super::vfs::VNode, ()> {
+        todo!()
+    }
+
+    fn create(
+        &self,
+        nm: &str,
+        va: super::vfs::VAttr,
+        e: u32,
+        m: u32,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) -> Result<super::vfs::VNode, ()> {
+        todo!()
+    }
+
+    fn link(
+        &self,
+        target_dir: *mut super::vfs::VNode,
+        target_name: &str,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) {
+        todo!()
+    }
+
+    fn rename(
+        &self,
+        nm: &str,
+        target_dir: *mut super::vfs::VNode,
+        target_name: &str,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) {
+        todo!()
+    }
+
+    fn mkdir(
+        &self,
+        nm: &str,
+        va: super::vfs::VAttr,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) -> Result<super::vfs::VNode, ()> {
+        todo!()
+    }
+
+    fn readdir(&self, uiop: *const super::vfs::UIO, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn symlink(
+        &self,
+        link_name: &str,
+        va: super::vfs::VAttr,
+        target_name: &str,
+        c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) {
+        todo!()
+    }
+
+    fn readlink(&self, uiop: *const super::vfs::UIO, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn fsync(&self, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn inactive(&self, c: super::vfs::UserCred, vp: *const VNode) {
+        todo!()
+    }
+
+    fn bmap(&self, block_number: u32, bnp: (), vp: *const VNode) -> super::vfs::VNode {
+        todo!()
+    }
+
+    fn strategy(&self, bp: (), vp: *const VNode) {
+        todo!()
+    }
+
+    fn bread(&self, block_number: u32, vp: *const VNode) -> Arc<[u8]> {
+        todo!()
+    }
 }
 
 macro_rules! inode_enum_try_into {
     ($inode_type:ty, $inode_name:ident) => {
-        impl<'a> TryInto<$inode_type> for Inode<'a> {
+        impl<'a> TryInto<$inode_type> for Inode {
             type Error = ();
 
             fn try_into(self) -> Result<$inode_type, Self::Error> {
@@ -310,28 +467,28 @@ macro_rules! inode_enum_try_into {
     };
 }
 
-inode_enum_try_into!(BasicFileInode<'a>, BasicFile);
-inode_enum_try_into!(BasicDirectoryInode<'a>, BasicDirectory);
+inode_enum_try_into!(BasicFileInode, BasicFile);
+inode_enum_try_into!(BasicDirectoryInode, BasicDirectory);
 
 // TODO: can we remove the dependence on squahsfs??
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct InodeHeader<'a> {
-    squashfs: &'a Squashfs<'a>,
+struct InodeHeader {
+    // squashfs: &'a Squashfs<'a>,
     file_type: InodeFileType,
     _reserved: [u16; 3],
     mtime: u32,
     inode_num: u32,
 }
 
-impl<'a> InodeHeader<'a> {
-    fn from_bytes(squashfs: &'a Squashfs, bytes: &[u8]) -> Self {
+impl InodeHeader {
+    fn from_bytes(bytes: &[u8]) -> Self {
         let file_type = u16::from_le_bytes(bytes[0..2].try_into().unwrap()).into();
         let mtime = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
         let inode_num = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
 
         return Self {
-            squashfs,
+            // squashfs,
             file_type,
             _reserved: [0; 3],
             mtime,
@@ -340,7 +497,7 @@ impl<'a> InodeHeader<'a> {
     }
 }
 
-impl<'a> Debug for InodeHeader<'a> {
+impl Debug for InodeHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InodeHeader")
             .field("file_type", &self.file_type)
@@ -353,8 +510,8 @@ impl<'a> Debug for InodeHeader<'a> {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-struct BasicDirectoryInode<'a> {
-    header: InodeHeader<'a>,
+struct BasicDirectoryInode {
+    header: InodeHeader,
     block_index: u32,  // 4
     link_count: u32,   // 8
     file_size: u16,    // 10
@@ -362,9 +519,9 @@ struct BasicDirectoryInode<'a> {
     parent_inode: u32, // 16
 }
 
-impl<'a> BasicDirectoryInode<'a> {
-    fn from_bytes(squashfs: &'a Squashfs, bytes: &[u8]) -> Self {
-        let header = InodeHeader::from_bytes(squashfs, bytes);
+impl BasicDirectoryInode {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let header = InodeHeader::from_bytes(bytes);
         let block_index = u32::from_le_bytes(bytes[16..20].try_into().unwrap());
         let link_count = u32::from_le_bytes(bytes[20..24].try_into().unwrap());
         let file_size = u16::from_le_bytes(bytes[24..26].try_into().unwrap());
@@ -381,70 +538,71 @@ impl<'a> BasicDirectoryInode<'a> {
         };
     }
 
-    fn entries(&self) -> Arc<[Inode]> {
-        let mut entries: Vec<Inode> = Vec::new();
+    // #[allow(dead_code)]
+    // fn entries(&self) -> Arc<[Inode]> {
+    //     let mut entries: Vec<Inode> = Vec::new();
 
-        let directory_table = &self
-            .header
-            .squashfs
-            .get_decompressed_table(self.header.squashfs.directory_table, (true, None));
+    //     let directory_table = &self
+    //         .header
+    //         .squashfs
+    //         .get_decompressed_table(self.header.squashfs.directory_table, (true, None));
 
-        let directory_table_header =
-            DirectoryTableHeader::from_bytes(&directory_table[self.block_offset as usize..]);
+    //     let directory_table_header =
+    //         DirectoryTableHeader::from_bytes(&directory_table[self.block_offset as usize..]);
 
-        // TODO: cheap hack, fix it when I have more hours of sleep.
-        let mut offset = self.block_offset as usize + core::mem::size_of::<DirectoryTableHeader>();
+    //     // TODO: cheap hack, fix it when I have more hours of sleep.
+    //     let mut offset = self.block_offset as usize + core::mem::size_of::<DirectoryTableHeader>();
 
-        for _ in 0..directory_table_header.entry_count as usize {
-            let directory_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
+    //     for _ in 0..directory_table_header.entry_count as usize {
+    //         let directory_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
 
-            offset += 8 + directory_table_entry.name.len();
+    //         offset += 8 + directory_table_entry.name.len();
 
-            let file_inode = self
-                .header
-                .squashfs
-                .read_inode(directory_table_entry.offset as u32);
+    //         let file_inode = self
+    //             .header
+    //             .squashfs
+    //             .read_inode(directory_table_entry.offset as u32);
 
-            entries.push(file_inode);
-        }
+    //         entries.push(file_inode);
+    //     }
 
-        return Arc::from(entries);
-    }
+    //     return Arc::from(entries);
+    // }
 
-    fn find(&self, name: &str) -> Option<Inode<'a>> {
-        let directory_table = &self
-            .header
-            .squashfs
-            .get_decompressed_table(self.header.squashfs.directory_table, (true, None));
+    // fn find(&self, name: &str) -> Option<Inode<'a>> {
+    //     let directory_table = &self
+    //         .header
+    //         .squashfs
+    //         .get_decompressed_table(self.header.squashfs.directory_table, (true, None));
 
-        let directory_table_header =
-            DirectoryTableHeader::from_bytes(&directory_table[self.block_offset as usize..]);
+    //     let directory_table_header =
+    //         DirectoryTableHeader::from_bytes(&directory_table[self.block_offset as usize..]);
 
-        // TODO: cheap hack, fix it when I have more hours of sleep.
-        let mut offset = self.block_offset as usize + core::mem::size_of::<DirectoryTableHeader>();
+    //     // TODO: cheap hack, fix it when I have more hours of sleep.
+    //     let mut offset = self.block_offset as usize + core::mem::size_of::<DirectoryTableHeader>();
+    //     InodeHeader
+    //     for _ in 0..directory_table_header.entry_count as usize {
+    //         let directory_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
 
-        for _ in 0..directory_table_header.entry_count as usize {
-            let directory_table_entry = DirectoryTableEntry::from_bytes(&directory_table[offset..]);
+    //         offset += 8 + directory_table_entry.name.len();
 
-            offset += 8 + directory_table_entry.name.len();
+    //         if directory_table_entry.name == name {
+    //             return Some(
+    //                 self.header
+    //                     .squashfs
+    //                     .read_inode(directory_table_entry.offset as u32),
+    //             );
+    //         }
+    //     }
 
-            if directory_table_entry.name == name {
-                return Some(
-                    self.header
-                        .squashfs
-                        .read_inode(directory_table_entry.offset as u32),
-                );
-            }
-        }
-
-        return None;
-    }
+    //     return None;
+    // }
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-struct BasicFileInode<'a> {
-    header: InodeHeader<'a>,
+struct BasicFileInode {
+    header: InodeHeader,
     block_start: u32,  // 4
     frag_idx: u32,     // 8
     block_offset: u32, // 12
@@ -452,9 +610,9 @@ struct BasicFileInode<'a> {
     block_sizes: *const u32,
 }
 
-impl<'a> BasicFileInode<'a> {
-    fn from_bytes(squashfs: &'a Squashfs, bytes: &[u8]) -> Self {
-        let header = InodeHeader::from_bytes(squashfs, bytes);
+impl BasicFileInode {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let header = InodeHeader::from_bytes(bytes);
         let block_start = u32::from_le_bytes(bytes[16..20].try_into().unwrap());
         let frag_idx = u32::from_le_bytes(bytes[20..24].try_into().unwrap());
         let block_offset = u32::from_le_bytes(bytes[24..28].try_into().unwrap());
@@ -472,100 +630,100 @@ impl<'a> BasicFileInode<'a> {
     }
 }
 
-impl<'a> VfsFile for BasicFileInode<'a> {
-    fn read(&self) -> Result<Arc<[u8]>, ()> {
-        // TODO: is this really how you're supposed to do this?
-        let mut block_data: Vec<u8> = Vec::with_capacity(self.file_size as usize);
+// impl<'a> VfsFile for BasicFileInode<'a> {
+//     fn read(&self) -> Result<Arc<[u8]>, ()> {
+//         // TODO: is this really how you're supposed to do this?
+//         let mut block_data: Vec<u8> = Vec::with_capacity(self.file_size as usize);
 
-        let data_table: Vec<u8>;
+//         let data_table: Vec<u8>;
 
-        let block_offset = if self.frag_idx == u32::MAX {
-            data_table = self.header.squashfs.get_decompressed_table(
-                self.header.squashfs.data_table,
-                (
-                    false,
-                    Some(
-                        !self
-                            .header
-                            .squashfs
-                            .superblock
-                            .features()
-                            .uncompressed_data_blocks,
-                    ),
-                ),
-            );
+//         let block_offset = if self.frag_idx == u32::MAX {
+//             data_table = self.header.squashfs.get_decompressed_table(
+//                 self.header.squashfs.data_table,
+//                 (
+//                     false,
+//                     Some(
+//                         !self
+//                             .header
+//                             .squashfs
+//                             .superblock
+//                             .features()
+//                             .uncompressed_data_blocks,
+//                     ),
+//                 ),
+//             );
 
-            self.block_offset as usize
-        } else {
-            // Tail end packing
-            let fragment_table = self.header.squashfs.get_decompressed_table(
-                self.header.squashfs.fragment_table.unwrap(),
-                (
-                    false,
-                    Some(false), // Some(
-                                 //     !self
-                                 //         .header
-                                 //         .squashfs
-                                 //         .superblock
-                                 //         .features()
-                                 //         .uncompressed_fragments,
-                                 // ),
-                ),
-            );
+//             self.block_offset as usize
+//         } else {
+//             // Tail end packing
+//             let fragment_table = self.header.squashfs.get_decompressed_table(
+//                 self.header.squashfs.fragment_table.unwrap(),
+//                 (
+//                     false,
+//                     Some(false), // Some(
+//                                  //     !self
+//                                  //         .header
+//                                  //         .squashfs
+//                                  //         .superblock
+//                                  //         .features()
+//                                  //         .uncompressed_fragments,
+//                                  // ),
+//                 ),
+//             );
 
-            let fragment_pointer = (self.header.squashfs.start as u64
-                + u64::from_le_bytes(
-                    fragment_table[self.frag_idx as usize..(self.frag_idx + 8) as usize]
-                        .try_into()
-                        .unwrap(),
-                )) as *mut u8;
+//             let fragment_pointer = (self.header.squashfs.start as u64
+//                 + u64::from_le_bytes(
+//                     fragment_table[self.frag_idx as usize..(self.frag_idx + 8) as usize]
+//                         .try_into()
+//                         .unwrap(),
+//                 )) as *mut u8;
 
-            // build array since fragment_pointer is not guaranteed to be 0x02 aligned
-            // We add two since fragment_pointer points to the beginning of the fragment block,
-            // Which is a metadata block, and we get the size, but that excludes the two header bytes,
-            // And since we are building the array due to unaligned pointer shenanigans we need to
-            // include the header bytes otherwise we are short by two bytes
-            let fragment_block_size = unsafe {
-                u16::from_le(core::ptr::read_unaligned(fragment_pointer as *mut u16)) & 0x7FFF
-            } + 2;
+//             // build array since fragment_pointer is not guaranteed to be 0x02 aligned
+//             // We add two since fragment_pointer points to the beginning of the fragment block,
+//             // Which is a metadata block, and we get the size, but that excludes the two header bytes,
+//             // And since we are building the array due to unaligned pointer shenanigans we need to
+//             // include the header bytes otherwise we are short by two bytes
+//             let fragment_block_size = unsafe {
+//                 u16::from_le(core::ptr::read_unaligned(fragment_pointer as *mut u16)) & 0x7FFF
+//             } + 2;
 
-            let mut fragment_block_raw = Vec::new();
-            for i in 0..fragment_block_size as usize {
-                fragment_block_raw
-                    .push(unsafe { core::ptr::read_unaligned(fragment_pointer.add(i)) })
-            }
+//             let mut fragment_block_raw = Vec::new();
+//             for i in 0..fragment_block_size as usize {
+//                 fragment_block_raw
+//                     .push(unsafe { core::ptr::read_unaligned(fragment_pointer.add(i)) })
+//             }
 
-            let fragment_block = self
-                .header
-                .squashfs
-                .get_decompressed_table(&fragment_block_raw, (true, None));
+//             let fragment_block = self
+//                 .header
+//                 .squashfs
+//                 .get_decompressed_table(&fragment_block_raw, (true, None));
 
-            let fragment_start = u64::from_le_bytes(fragment_block[0..8].try_into().unwrap());
-            let fragment_size = u32::from_le_bytes(fragment_block[8..12].try_into().unwrap());
-            let fragment_compressed = fragment_size & 1 << 24 == 0;
-            let fragment_size = fragment_size & 0xFEFFFFFF;
+//             let fragment_start = u64::from_le_bytes(fragment_block[0..8].try_into().unwrap());
+//             let fragment_size = u32::from_le_bytes(fragment_block[8..12].try_into().unwrap());
+//             let fragment_compressed = fragment_size & 1 << 24 == 0;
+//             let fragment_size = fragment_size & 0xFEFFFFFF;
 
-            let data_table_raw = unsafe {
-                core::slice::from_raw_parts(
-                    (self.header.squashfs.start as u64 + fragment_start) as *mut u8,
-                    fragment_size as usize,
-                )
-                .to_vec()
-            };
+//             let data_table_raw = unsafe {
+//                 core::slice::from_raw_parts(
+//                     (self.header.squashfs.start as u64 + fragment_start) as *mut u8,
+//                     fragment_size as usize,
+//                 )
+//                 .to_vec()
+//             };
 
-            data_table = self
-                .header
-                .squashfs
-                .get_decompressed_table(&data_table_raw, (false, Some(fragment_compressed)));
+//             data_table = self
+//                 .header
+//                 .squashfs
+//                 .get_decompressed_table(&data_table_raw, (false, Some(fragment_compressed)));
 
-            self.block_offset as usize
-        };
+//             self.block_offset as usize
+//         };
 
-        block_data.extend(&data_table[block_offset..(block_offset + self.file_size as usize)]);
+//         block_data.extend(&data_table[block_offset..(block_offset + self.file_size as usize)]);
 
-        return Ok(Arc::from(block_data));
-    }
-}
+//         return Ok(Arc::from(block_data));
+//     }
+// }
 
 #[repr(C)]
 #[derive(Debug)]
