@@ -35,7 +35,14 @@ pub extern "C" fn _start() -> ! {
 
     drivers::storage::ide::init();
 
-    crate::println!("{:?}", vfs_open("/example.txt"));
+    let nested_file = vfs_open("/boot/limine/limine.cfg").unwrap();
+
+    crate::println!(
+        "{:X?}",
+        nested_file
+            .ops
+            .open(0, UserCred { uid: 0, gid: 0 }, nested_file.as_ptr())
+    );
 
     let file = vfs_open("/example.txt").unwrap();
     crate::println!(
@@ -102,7 +109,7 @@ macro_rules! print {
 
 #[macro_export]
 macro_rules! log_info {
-    ($($arg:tt)*) => ($crate::println!("\x1B[97m[ \x1B[90m? \x1B[97m]\x1B[0m () {}", &alloc::format!($($arg)*)));
+    ($($arg:tt)*) => ($crate::println!("\x1B[97m[ \x1B[90m? \x1B[97m]\x1B[0m {}", &alloc::format!($($arg)*)));
 }
 
 #[macro_export]

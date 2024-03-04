@@ -62,16 +62,24 @@
 
 use core::fmt::Debug;
 
-use alloc::{alloc::handle_alloc_error, boxed::Box, sync::Arc, vec::Vec};
+use alloc::{
+    alloc::{alloc, handle_alloc_error},
+    boxed::Box,
+    sync::Arc,
+    vec::Vec,
+};
 
-use crate::{log_info, mem::PHYSICAL_MEMORY_MANAGER};
+use crate::{
+    log_info,
+    mem::{ALLOCATOR, PHYSICAL_MEMORY_MANAGER},
+};
 
 static mut ROOT_VFS: Vfs = Vfs::null();
 
 pub struct Vfs {
     next: Option<*mut Vfs>,
     ops: Option<Box<dyn FsOps>>,
-    vnode_covered: Option<Box<VNode>>,
+    vnode_covered: Option<*const VNode>,
     flags: u32,
     block_size: u32,
     pub data: *mut u8,
@@ -259,7 +267,7 @@ pub struct VAttr {
 
 pub fn add_vfs(mount_point: &str, fs_ops: Box<dyn FsOps>) -> Result<(), ()> {
     let layout = alloc::alloc::Layout::new::<Vfs>();
-    let vfs = PHYSICAL_MEMORY_MANAGER.alloc(1).unwrap().cast::<Vfs>();
+    let vfs = unsafe { alloc(layout).cast::<Vfs>() };
 
     let vfs = unsafe { &mut *vfs };
 
