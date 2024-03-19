@@ -9,10 +9,12 @@
 use core::ffi::CStr;
 
 use alloc::{format, vec::Vec};
-use drivers::serial::{read_serial, write_serial};
 use limine::KernelFileRequest;
 
-use crate::drivers::fs::vfs::{vfs_open, UserCred};
+use crate::drivers::fs::{
+    initramfs,
+    vfs::{vfs_open, UserCred},
+};
 
 extern crate alloc;
 
@@ -30,24 +32,38 @@ pub extern "C" fn _start() -> ! {
 
     drivers::serial::init_serial();
 
+    // let squashfs = initramfs::init();
+
+    // crate::println!("{:?}", squashfs.superblock);
+
+    let _ = drivers::fs::vfs::add_vfs("/", alloc::boxed::Box::new(initramfs::init()));
+
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     drivers::pci::enumerate_pci_bus();
 
-    drivers::storage::ide::init();
+    let mut file = vfs_open("/firstdir/seconddirbutlonger/yeah.txt").unwrap();
 
-    let nested_file = vfs_open("/boot/limine/limine.cfg").unwrap();
+    // drivers::storage::ide::init();
 
+    // let nested_file = vfs_open("/boot/limine/limine.cfg").unwrap();
+
+    // crate::println!(
+    //     "{:X?}",
+    //     nested_file
+    //         .ops
+    //         .open(0, UserCred { uid: 0, gid: 0 }, nested_file.as_ptr())
+    // );
+
+    // let file = vfs_open("/example.txt").unwrap();
     crate::println!(
         "{:X?}",
-        nested_file
-            .ops
-            .open(0, UserCred { uid: 0, gid: 0 }, nested_file.as_ptr())
-    );
-
-    let file = vfs_open("/example.txt").unwrap();
-    crate::println!(
-        "{:X?}",
-        file.ops.open(0, UserCred { uid: 0, gid: 0 }, file.as_ptr())
+        core::str::from_utf8(
+            &file
+                .ops
+                .open(0, UserCred { uid: 0, gid: 0 }, file.as_ptr())
+                .unwrap()
+        )
+        .unwrap()
     );
 
     let fb = drivers::video::get_framebuffer().unwrap();
@@ -72,23 +88,23 @@ pub extern "C" fn _start() -> ! {
 
     fb.blit_screen(buffer, None);
 
-    loop {
-        let ch = read_serial();
+    // loop {
+    //     let ch = read_serial();
 
-        if ch == b'\x00' {
-            continue;
-        }
+    //     if ch == b'\x00' {
+    //         continue;
+    //     }
 
-        if ch == b'\x08' {
-            write_serial(b'\x08');
-            write_serial(b' ');
-            write_serial(b'\x08');
-        }
+    //     if ch == b'\x08' {
+    //         write_serial(b'\x08');
+    //         write_serial(b' ');
+    //         write_serial(b'\x08');
+    //     }
 
-        if ch > 0x20 && ch < 0x7F {
-            write_serial(ch);
-        }
-    }
+    //     if ch > 0x20 && ch < 0x7F {
+    //         write_serial(ch);
+    //     }
+    // }
 
     hcf();
 }

@@ -110,15 +110,15 @@ impl Vfs {
 
 pub trait FsOps {
     // yes, the vfsp was the best solution I could come up with
-    fn mount(&self, path: &str, data: &mut *mut u8, vfsp: *const Vfs);
-    fn unmount(&self, vfsp: *const Vfs);
-    fn root(&self, vfsp: *const Vfs) -> VNode;
-    fn statfs(&self, vfsp: *const Vfs) -> StatFs;
-    fn sync(&self, vfsp: *const Vfs);
-    fn fid(&self, path: &str, vfsp: *const Vfs) -> Option<FileId>;
+    fn mount(&mut self, path: &str, data: &mut *mut u8, vfsp: *const Vfs);
+    fn unmount(&mut self, vfsp: *const Vfs);
+    fn root(&mut self, vfsp: *const Vfs) -> VNode;
+    fn statfs(&mut self, vfsp: *const Vfs) -> StatFs;
+    fn sync(&mut self, vfsp: *const Vfs);
+    fn fid(&mut self, path: &str, vfsp: *const Vfs) -> Option<FileId>;
     // idk how the fuck you're supposed to accomplish this
     // good luck I guess.
-    fn vget(&self, fid: FileId, vfsp: *const Vfs) -> VNode;
+    fn vget(&mut self, fid: FileId, vfsp: *const Vfs) -> VNode;
 }
 
 pub struct FileId {
@@ -208,17 +208,24 @@ pub struct UIO {
 }
 
 pub trait VNodeOperations {
-    fn open(&self, f: u32, c: UserCred, vp: *const VNode) -> Result<Arc<[u8]>, ()>;
-    fn close(&self, f: u32, c: UserCred, vp: *const VNode);
-    fn rdwr(&self, uiop: *const UIO, direction: IODirection, f: u32, c: UserCred, vp: *const VNode);
-    fn ioctl(&self, com: u32, d: *mut u8, f: u32, c: UserCred, vp: *const VNode);
-    fn select(&self, w: IODirection, c: UserCred, vp: *const VNode);
-    fn getattr(&self, c: UserCred, vp: *const VNode) -> VAttr;
-    fn setattr(&self, va: VAttr, c: UserCred, vp: *const VNode);
-    fn access(&self, m: u32, c: UserCred, vp: *const VNode);
-    fn lookup(&self, nm: &str, c: UserCred, vp: *const VNode) -> Result<VNode, ()>;
+    fn open(&mut self, f: u32, c: UserCred, vp: *const VNode) -> Result<Arc<[u8]>, ()>;
+    fn close(&mut self, f: u32, c: UserCred, vp: *const VNode);
+    fn rdwr(
+        &mut self,
+        uiop: *const UIO,
+        direction: IODirection,
+        f: u32,
+        c: UserCred,
+        vp: *const VNode,
+    );
+    fn ioctl(&mut self, com: u32, d: *mut u8, f: u32, c: UserCred, vp: *const VNode);
+    fn select(&mut self, w: IODirection, c: UserCred, vp: *const VNode);
+    fn getattr(&mut self, c: UserCred, vp: *const VNode) -> VAttr;
+    fn setattr(&mut self, va: VAttr, c: UserCred, vp: *const VNode);
+    fn access(&mut self, m: u32, c: UserCred, vp: *const VNode);
+    fn lookup(&mut self, nm: &str, c: UserCred, vp: *const VNode) -> Result<VNode, ()>;
     fn create(
-        &self,
+        &mut self,
         nm: &str,
         va: VAttr,
         e: u32,
@@ -226,24 +233,31 @@ pub trait VNodeOperations {
         c: UserCred,
         vp: *const VNode,
     ) -> Result<VNode, ()>;
-    fn link(&self, target_dir: *mut VNode, target_name: &str, c: UserCred, vp: *const VNode);
+    fn link(&mut self, target_dir: *mut VNode, target_name: &str, c: UserCred, vp: *const VNode);
     fn rename(
-        &self,
+        &mut self,
         nm: &str,
         target_dir: *mut VNode,
         target_name: &str,
         c: UserCred,
         vp: *const VNode,
     );
-    fn mkdir(&self, nm: &str, va: VAttr, c: UserCred, vp: *const VNode) -> Result<VNode, ()>;
-    fn readdir(&self, uiop: *const UIO, c: UserCred, vp: *const VNode);
-    fn symlink(&self, link_name: &str, va: VAttr, target_name: &str, c: UserCred, vp: *const VNode);
-    fn readlink(&self, uiop: *const UIO, c: UserCred, vp: *const VNode);
-    fn fsync(&self, c: UserCred, vp: *const VNode);
-    fn inactive(&self, c: UserCred, vp: *const VNode);
-    fn bmap(&self, block_number: u32, bnp: (), vp: *const VNode) -> VNode;
-    fn strategy(&self, bp: (), vp: *const VNode);
-    fn bread(&self, block_number: u32, vp: *const VNode) -> Arc<[u8]>;
+    fn mkdir(&mut self, nm: &str, va: VAttr, c: UserCred, vp: *const VNode) -> Result<VNode, ()>;
+    fn readdir(&mut self, uiop: *const UIO, c: UserCred, vp: *const VNode);
+    fn symlink(
+        &mut self,
+        link_name: &str,
+        va: VAttr,
+        target_name: &str,
+        c: UserCred,
+        vp: *const VNode,
+    );
+    fn readlink(&mut self, uiop: *const UIO, c: UserCred, vp: *const VNode);
+    fn fsync(&mut self, c: UserCred, vp: *const VNode);
+    fn inactive(&mut self, c: UserCred, vp: *const VNode);
+    fn bmap(&mut self, block_number: u32, bnp: (), vp: *const VNode) -> VNode;
+    fn strategy(&mut self, bp: (), vp: *const VNode);
+    fn bread(&mut self, block_number: u32, vp: *const VNode) -> Arc<[u8]>;
 }
 
 pub struct VAttr {
@@ -267,7 +281,9 @@ pub struct VAttr {
 
 pub fn add_vfs(mount_point: &str, fs_ops: Box<dyn FsOps>) -> Result<(), ()> {
     let layout = alloc::alloc::Layout::new::<Vfs>();
-    let vfs = unsafe { alloc(layout).cast::<Vfs>() };
+    // TODO: investigate why on earth this gives me an allocation error
+    // let vfs = unsafe { alloc(layout).cast::<Vfs>() };
+    let vfs = PHYSICAL_MEMORY_MANAGER.alloc(1).unwrap().cast::<Vfs>();
 
     let vfs = unsafe { &mut *vfs };
 
@@ -286,7 +302,7 @@ pub fn add_vfs(mount_point: &str, fs_ops: Box<dyn FsOps>) -> Result<(), ()> {
 
             (*vfs)
                 .ops
-                .as_ref()
+                .as_mut()
                 .unwrap()
                 .mount(mount_point, &mut vfs.data, vfsp);
         }
@@ -302,8 +318,8 @@ pub fn add_vfs(mount_point: &str, fs_ops: Box<dyn FsOps>) -> Result<(), ()> {
 
     let target_vfs = unsafe { ROOT_VFS.next.unwrap() };
 
-    let binding = unsafe { &(*target_vfs).ops };
-    let mut cur_vnode = binding.as_ref().unwrap().root(target_vfs);
+    let binding = unsafe { &mut (*target_vfs).ops };
+    let mut cur_vnode = binding.as_mut().unwrap().root(target_vfs);
 
     let parts = mount_point.split('/').collect::<Vec<&str>>();
 
@@ -329,7 +345,7 @@ pub fn add_vfs(mount_point: &str, fs_ops: Box<dyn FsOps>) -> Result<(), ()> {
 
         (*vfs)
             .ops
-            .as_ref()
+            .as_mut()
             .unwrap()
             .mount(mount_point, &mut vfs.data, vfsp);
     }
@@ -342,8 +358,8 @@ pub fn add_vfs(mount_point: &str, fs_ops: Box<dyn FsOps>) -> Result<(), ()> {
 pub fn vfs_open(path: &str) -> Result<VNode, ()> {
     let parts = path.split('/').collect::<Vec<&str>>();
     let target_vfs = unsafe { ROOT_VFS.next.unwrap() };
-    let binding = unsafe { &(*target_vfs).ops };
-    let mut cur_vnode = binding.as_ref().unwrap().root(target_vfs);
+    let binding = unsafe { &mut (*target_vfs).ops };
+    let mut cur_vnode = binding.as_mut().unwrap().root(target_vfs);
 
     for part in parts {
         if part.is_empty() {

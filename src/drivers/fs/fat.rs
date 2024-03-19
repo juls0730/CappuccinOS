@@ -511,21 +511,18 @@ impl FatFs {
 }
 
 impl FsOps for FatFs {
-    fn mount(&self, path: &str, data: &mut *mut u8, vfsp: *const super::vfs::Vfs) {
+    fn mount(&mut self, _path: &str, data: &mut *mut u8, _vfsp: *const super::vfs::Vfs) {
         // TODO: load the FAT into memory here
 
         *data = core::ptr::addr_of!(*self) as *mut u8;
-
-        // *data = unsafe { alloc::alloc::alloc(alloc::alloc::Layout::new::<Option<VNode>>()) };
-        // unsafe { *data.cast::<Option<VNode>>() = None };
     }
 
-    fn unmount(&self, vfsp: *const super::vfs::Vfs) {
+    fn unmount(&mut self, _vfsp: *const super::vfs::Vfs) {
         // TODO: unload the FAT form memory
     }
 
-    fn root(&self, vfsp: *const super::vfs::Vfs) -> super::vfs::VNode {
-        let mut root_cluster = match self.fat_type {
+    fn root(&mut self, vfsp: *const super::vfs::Vfs) -> super::vfs::VNode {
+        let root_cluster = match self.fat_type {
             FatType::Fat32(ebpb) => ebpb.root_dir_cluster as usize,
             _ => self.sector_to_cluster(
                 self.bpb.reserved_sectors as usize
@@ -535,7 +532,6 @@ impl FsOps for FatFs {
 
         let file = File::Dir(FatDirectory {
             directory_cluster: root_cluster,
-            // fat_fs: self,
         });
 
         return super::vfs::VNode {
@@ -552,19 +548,23 @@ impl FsOps for FatFs {
         };
     }
 
-    fn fid(&self, path: &str, vfsp: *const super::vfs::Vfs) -> Option<super::vfs::FileId> {
+    fn fid(&mut self, _path: &str, _vfsp: *const super::vfs::Vfs) -> Option<super::vfs::FileId> {
         todo!("FAT FID");
     }
 
-    fn statfs(&self, vfsp: *const super::vfs::Vfs) -> super::vfs::StatFs {
+    fn statfs(&mut self, _vfsp: *const super::vfs::Vfs) -> super::vfs::StatFs {
         todo!("FAT STATFS");
     }
 
-    fn sync(&self, vfsp: *const super::vfs::Vfs) {
+    fn sync(&mut self, _vfsp: *const super::vfs::Vfs) {
         todo!("FAT SYNC");
     }
 
-    fn vget(&self, fid: super::vfs::FileId, vfsp: *const super::vfs::Vfs) -> super::vfs::VNode {
+    fn vget(
+        &mut self,
+        _fid: super::vfs::FileId,
+        _vfsp: *const super::vfs::Vfs,
+    ) -> super::vfs::VNode {
         todo!("FAT VGET");
     }
 
@@ -607,64 +607,71 @@ enum File {
 }
 
 impl<'a> VNodeOperations for File {
-    fn access(&self, m: u32, c: super::vfs::UserCred, vp: *const VNode) {
+    fn access(&mut self, _m: u32, _c: super::vfs::UserCred, _vp: *const VNode) {
         todo!("VNODE OPERATIONS");
     }
 
-    fn bmap(&self, block_number: u32, bnp: (), vp: *const VNode) -> super::vfs::VNode {
+    fn bmap(&mut self, _block_number: u32, _bnp: (), _vp: *const VNode) -> super::vfs::VNode {
         todo!("VNODE OPERATIONS");
     }
 
-    fn bread(&self, block_number: u32, vp: *const VNode) -> Arc<[u8]> {
+    fn bread(&mut self, _block_number: u32, _vp: *const VNode) -> Arc<[u8]> {
         todo!("VNODE OPERATIONS");
     }
 
-    fn close(&self, f: u32, c: super::vfs::UserCred, vp: *const VNode) {
+    fn close(&mut self, _f: u32, _c: super::vfs::UserCred, _vp: *const VNode) {
         todo!("VNODE OPERATIONS");
     }
 
     fn create(
-        &self,
-        nm: &str,
-        va: super::vfs::VAttr,
-        e: u32,
-        m: u32,
-        c: super::vfs::UserCred,
-        vp: *const VNode,
+        &mut self,
+        _nm: &str,
+        _va: super::vfs::VAttr,
+        _e: u32,
+        _m: u32,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
     ) -> Result<super::vfs::VNode, ()> {
         todo!("VNODE OPERATIONS");
     }
 
-    fn fsync(&self, c: super::vfs::UserCred, vp: *const VNode) {
+    fn fsync(&mut self, _c: super::vfs::UserCred, _vp: *const VNode) {
         todo!("VNODE OPERATIONS");
     }
 
-    fn getattr(&self, c: super::vfs::UserCred, vp: *const VNode) -> super::vfs::VAttr {
+    fn getattr(&mut self, _c: super::vfs::UserCred, _vp: *const VNode) -> super::vfs::VAttr {
         todo!("VNODE OPERATIONS");
     }
 
-    fn inactive(&self, c: super::vfs::UserCred, vp: *const VNode) {
+    fn inactive(&mut self, _c: super::vfs::UserCred, _vp: *const VNode) {
         todo!("VNODE OPERATIONS");
     }
 
-    fn ioctl(&self, com: u32, d: *mut u8, f: u32, c: super::vfs::UserCred, vp: *const VNode) {
+    fn ioctl(
+        &mut self,
+        _com: u32,
+        _d: *mut u8,
+        _f: u32,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
+    ) {
         todo!("VNODE OPERATIONS");
     }
 
     fn link(
-        &self,
-        target_dir: *mut super::vfs::VNode,
-        target_name: &str,
-        c: super::vfs::UserCred,
-        vp: *const VNode,
+        &mut self,
+        _target_dir: *mut super::vfs::VNode,
+        _target_name: &str,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
     ) {
         todo!("VNODE OPERATIONS");
     }
 
     fn lookup(
-        &self,
+        &mut self,
         nm: &str,
-        c: super::vfs::UserCred,
+        _c: super::vfs::UserCred,
         vp: *const VNode,
     ) -> Result<super::vfs::VNode, ()> {
         let fat_fs = unsafe { (*(*vp).parent).data.cast::<FatFs>() };
@@ -708,16 +715,21 @@ impl<'a> VNodeOperations for File {
     }
 
     fn mkdir(
-        &self,
-        nm: &str,
-        va: super::vfs::VAttr,
-        c: super::vfs::UserCred,
-        vp: *const VNode,
+        &mut self,
+        _nm: &str,
+        _va: super::vfs::VAttr,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
     ) -> Result<super::vfs::VNode, ()> {
         todo!("VNODE OPERATIONS");
     }
 
-    fn open(&self, f: u32, c: super::vfs::UserCred, vp: *const VNode) -> Result<Arc<[u8]>, ()> {
+    fn open(
+        &mut self,
+        _f: u32,
+        _c: super::vfs::UserCred,
+        vp: *const VNode,
+    ) -> Result<Arc<[u8]>, ()> {
         match self {
             File::Archive(archive) => {
                 let fat_fs = unsafe { (*(*vp).parent).data.cast::<FatFs>() };
@@ -780,59 +792,67 @@ impl<'a> VNodeOperations for File {
             }
             _ => panic!("Cannot open non archives"),
         }
-
-        todo!("VNODE OPERATIONS");
     }
 
     fn rdwr(
-        &self,
-        uiop: *const super::vfs::UIO,
-        direction: super::vfs::IODirection,
-        f: u32,
-        c: super::vfs::UserCred,
-        vp: *const VNode,
+        &mut self,
+        _uiop: *const super::vfs::UIO,
+        _direction: super::vfs::IODirection,
+        _f: u32,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
     ) {
         todo!("VNODE OPERATIONS");
     }
 
-    fn readdir(&self, uiop: *const super::vfs::UIO, c: super::vfs::UserCred, vp: *const VNode) {
+    fn readdir(
+        &mut self,
+        _uiop: *const super::vfs::UIO,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
+    ) {
         todo!("VNODE OPERATIONS");
     }
 
-    fn readlink(&self, uiop: *const super::vfs::UIO, c: super::vfs::UserCred, vp: *const VNode) {
+    fn readlink(
+        &mut self,
+        _uiop: *const super::vfs::UIO,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
+    ) {
         todo!("VNODE OPERATIONS");
     }
 
     fn rename(
-        &self,
-        nm: &str,
-        target_dir: *mut super::vfs::VNode,
-        target_name: &str,
-        c: super::vfs::UserCred,
-        vp: *const VNode,
+        &mut self,
+        _nm: &str,
+        _target_dir: *mut super::vfs::VNode,
+        _target_name: &str,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
     ) {
         todo!("VNODE OPERATIONS");
     }
 
-    fn select(&self, w: super::vfs::IODirection, c: super::vfs::UserCred, vp: *const VNode) {
+    fn select(&mut self, _w: super::vfs::IODirection, _c: super::vfs::UserCred, _vp: *const VNode) {
         todo!("VNODE OPERATIONS");
     }
 
-    fn setattr(&self, va: super::vfs::VAttr, c: super::vfs::UserCred, vp: *const VNode) {
+    fn setattr(&mut self, _va: super::vfs::VAttr, _c: super::vfs::UserCred, _vp: *const VNode) {
         todo!("VNODE OPERATIONS");
     }
 
-    fn strategy(&self, bp: (), vp: *const VNode) {
+    fn strategy(&mut self, _bp: (), _vp: *const VNode) {
         todo!("VNODE OPERATIONS");
     }
 
     fn symlink(
-        &self,
-        link_name: &str,
-        va: super::vfs::VAttr,
-        target_name: &str,
-        c: super::vfs::UserCred,
-        vp: *const VNode,
+        &mut self,
+        _link_name: &str,
+        _va: super::vfs::VAttr,
+        _target_name: &str,
+        _c: super::vfs::UserCred,
+        _vp: *const VNode,
     ) {
         todo!("VNODE OPERATIONS");
     }

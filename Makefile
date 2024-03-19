@@ -78,7 +78,7 @@ copy-initramfs-files:
 		echo "Hello World from Initramfs" > ${INITRAMFS_PATH}/example.txt
 		echo "Second file for testing" > ${INITRAMFS_PATH}/example2.txt
 		mkdir -p ${INITRAMFS_PATH}/firstdir/seconddirbutlonger/
-		echo "Hell yeah, we getting a working initramfs using a custom squashfs driver!!" > ${INITRAMFS_PATH}/firstdir/seconddirbutlonger/yeah.txt
+		echo "Nexted file reads!!" > ${INITRAMFS_PATH}/firstdir/seconddirbutlonger/yeah.txt
 
 compile-initramfs: copy-initramfs-files
 		# Make squashfs without compression temporaily so I can get it working before I have to write a gzip driver
@@ -100,7 +100,7 @@ endif
 		python scripts/font.py
 		mv scripts/font.psf ${INITRAMFS_PATH}/
 
-		# python scripts/initramfs-test.py 1000 ${INITRAMFS_PATH}/
+		python scripts/initramfs-test.py 100 ${INITRAMFS_PATH}/
 
 copy-iso-files:
 		# Limine files

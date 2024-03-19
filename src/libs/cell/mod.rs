@@ -21,6 +21,10 @@ impl<T> Cell<T> {
         return unsafe { &*self.value.get() };
     }
 
+    pub fn get_mut(&self) -> &mut T {
+        return unsafe { &mut *self.value.get() };
+    }
+
     pub fn set(&self, new_value: T) {
         unsafe { *self.value.get() = new_value };
     }
